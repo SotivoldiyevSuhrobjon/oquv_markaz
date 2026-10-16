@@ -17,5 +17,6 @@ urlpatterns = router.urls + [
     path("finance/months/<str:month>/<str:op>/", views.MonthCloseView.as_view()),
     path("salary/", views.SalaryView.as_view()),
     path("salary/me/", views.MySalaryView.as_view()),
+    path("salary/<int:pk>/", views.SalaryDetailView.as_view()),
     path("salary/<int:pk>/pay/", views.SalaryView.as_view()),
 ]

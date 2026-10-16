@@ -8,7 +8,7 @@ from apps.core.exceptions import BusinessError
 from apps.core.models import Setting
 from apps.core.utils import today
 
-from .models import Attendance, Enrollment, Group, ParentContact, Session, Student
+from .models import Attendance, Enrollment, Group, ParentContact, Room, Session, Student
 from .schedule import Slot
 
 
@@ -22,10 +22,15 @@ def all_slots(exclude_id=None) -> list[Slot]:
     return [slot_of(g) for g in qs if g.id != exclude_id]
 
 
+def room_sort_key(r: str):
+    return (0, int(r), r) if r.isdigit() else (1, 0, r)
+
+
 def rooms() -> list[str]:
-    base = ["101", "102", "103", "104", "105", "106", "107", "108", "201", "202", "203", "204"]
+    """Ro'yxatdagi xonalar + guruhlarda ishlatilganlar (Excel'dan kelgan bo'lishi mumkin)."""
+    known = set(Room.objects.values_list("name", flat=True))
     used = set(Group.objects.exclude(room="").values_list("room", flat=True))
-    return sorted(set(base) | used)
+    return sorted(known | used, key=room_sort_key)
 
 
 @transaction.atomic

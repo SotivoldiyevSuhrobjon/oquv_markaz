@@ -15,8 +15,8 @@ from apps.core.exceptions import BusinessError
 from apps.core.models import Setting
 
 from . import schedule, services
-from .models import Group, GroupTeacher, Student, Subject
-from .serializers import ContactSerializer, GroupSerializer, MarkSerializer, StudentSerializer, SubjectSerializer
+from .models import Enrollment, Group, GroupTeacher, Room, Student, Subject
+from .serializers import ContactSerializer, GroupSerializer, MarkSerializer, RoomSerializer, StudentSerializer, SubjectSerializer
 
 
 def my_groups(user):
@@ -39,6 +39,30 @@ class SubjectViewSet(AuditMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         if instance.groups.exists():
             raise BusinessError("Guruhi bor yo'nalishni o'chirib bo'lmaydi — nofaol qiling")
+        super().perform_destroy(instance)
+
+
+class RoomViewSet(AuditMixin, mixins.ListModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """Xonalar: ko'rish hammaga, qo'shish/o'chirish 'room' bo'limida (o'zgartirish huquqi bilan)."""
+
+    queryset = Room.objects.all()
+    serializer_class = RoomSerializer
+    audit_name = "room"
+    pagination_class = None
+
+    def get_permissions(self):
+        return [IsAuthenticated()] if self.action == "list" else [SectionPermission()]
+
+    def get_section(self):
+        return "room"
+
+    def list(self, request, *args, **kwargs):
+        rooms = sorted(self.get_queryset(), key=lambda r: services.room_sort_key(r.name))
+        return Response(self.get_serializer(rooms, many=True).data)
+
+    def perform_destroy(self, instance):
+        if Group.objects.filter(room=instance.name, is_active=True).exists():
+            raise BusinessError(f"Xona {instance.name} da guruhlar bor — avval ularni boshqa xonaga ko'chiring")
         super().perform_destroy(instance)
 
 
@@ -145,7 +169,29 @@ class GroupViewSet(AuditMixin, viewsets.ModelViewSet):
             qs = Group.objects.filter(subject=s, is_active=True)
             n = Student.objects.filter(enrollments__group__in=qs, enrollments__left_on__isnull=True).distinct().count()
             out.append({"subject": s.slug, "name": s.name, "groups": qs.count(), "students": n})
-        return Response({"subjects": out, "max_group_size": Setting.get().max_group_size, "conflicts": len(self.conflicts(request).data)})
+        totals = {
+            "teachers": User.objects.filter(role=Role.TEACHER, is_active=True).count(),
+            "supports": User.objects.filter(role=Role.SUPPORT, is_active=True).count(),
+            "groups": Group.objects.filter(is_active=True).count(),
+            "students": Student.objects.filter(status=Student.Status.ACTIVE).count(),
+            "rooms": len(services.rooms()),
+        }
+        size = Setting.get().max_group_size
+        counts = Group.objects.filter(is_active=True).annotate(n=Count("enrollments", filter=Q(enrollments__left_on__isnull=True)))
+        totals["free_places"] = sum(max(0, size - g.n) for g in counts)
+        totals["nogroup"] = (
+            Student.objects.filter(status=Student.Status.ACTIVE)
+            .exclude(id__in=Enrollment.objects.filter(left_on__isnull=True).values("student_id"))
+            .count()
+        )
+        return Response(
+            {
+                "totals": totals,
+                "subjects": out,
+                "max_group_size": Setting.get().max_group_size,
+                "conflicts": len(self.conflicts(request).data),
+            }
+        )
 
 
 class StudentViewSet(AuditMixin, viewsets.ModelViewSet):
@@ -185,8 +231,13 @@ class StudentViewSet(AuditMixin, viewsets.ModelViewSet):
         if p.get("group"):
             qs = qs.filter(enrollments__group_id=p["group"], enrollments__left_on__isnull=True)
         if p.get("q"):
-            qs = qs.filter(full_name__icontains=p["q"])
-        return qs
+            q = p["q"].strip()
+            qs = qs.filter(Q(full_name__icontains=q) | Q(phone__icontains=q))
+        if p.get("subject"):
+            qs = qs.filter(enrollments__group__subject__slug=p["subject"], enrollments__left_on__isnull=True)
+        if p.get("nogroup") == "1":
+            qs = qs.exclude(id__in=Enrollment.objects.filter(left_on__isnull=True).values("student_id"))
+        return qs.distinct()
 
     def perform_destroy(self, instance):
         if instance.payments.exists():
@@ -289,4 +340,4 @@ class AlertsView(APIView):
         return Response([{"student": s.id, "name": s.full_name, "phone": s.phone, "absences": s.miss} for s in students])
 
 
-__all__ = ["SubjectViewSet", "GroupViewSet", "StudentViewSet", "AttendanceView", "AlertsView", "mixins"]
+__all__ = ["SubjectViewSet", "RoomViewSet", "GroupViewSet", "StudentViewSet", "AttendanceView", "AlertsView", "mixins"]

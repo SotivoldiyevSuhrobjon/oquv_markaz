@@ -6,13 +6,30 @@ from apps.core.models import Setting
 from apps.core.utils import today
 
 from . import schedule, services
-from .models import Group, ParentContact, Student, Subject
+from .models import Group, ParentContact, Room, Student, Subject
 
 
 class SubjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subject
         fields = ("id", "slug", "name", "price", "has_levels", "is_kids", "prefix", "is_active")
+
+
+class RoomSerializer(serializers.ModelSerializer):
+    used = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Room
+        fields = ("id", "name", "used")
+
+    def get_used(self, obj) -> int:
+        return Group.objects.filter(room=obj.name, is_active=True).count()
+
+    def validate_name(self, v):
+        v = v.strip()
+        if not v:
+            raise serializers.ValidationError("Xona nomi bo'sh bo'lmasin")
+        return v
 
 
 class GroupSerializer(serializers.ModelSerializer):

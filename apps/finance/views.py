@@ -1,7 +1,8 @@
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -10,6 +11,7 @@ from apps.accounts.models import Role, User
 from apps.accounts.permissions import IsAdmin, SectionPermission
 from apps.core import audit
 from apps.core.exceptions import BusinessError
+from apps.core.models import Setting
 from apps.core.utils import month_of, today, validate_month
 
 from . import services
@@ -214,6 +216,64 @@ class SalaryView(APIView):
         e = services.pay_salary(u, m, request.user)
         audit.log(request, "salary.pay", f"user={u.id}", f"{m} {e.amount}")
         return Response({"paid": e.amount}, status=201)
+
+
+class SalaryDetailView(APIView):
+    """Oylik bo'limidan o'qituvchi kartasi: ma'lumot, guruhlar, stavka/oylikni o'zgartirish."""
+
+    def get_permissions(self):
+        return [SectionPermission()]
+
+    def get_section(self):
+        return "sal"
+
+    def _staff(self, pk):
+        return get_object_or_404(User, pk=pk, role__in=[Role.TEACHER, Role.SUPPORT])
+
+    def _payload(self, request, u):
+        from apps.academics.models import Group
+        from apps.academics.serializers import GroupSerializer
+
+        groups = Group.objects.filter(Q(teachers=u) | Q(supports=u), is_active=True).distinct()
+        return {
+            "id": u.id,
+            "name": str(u),
+            "role": u.role,
+            "phone": u.phone,
+            "district": u.district,
+            "category": u.category,
+            "description": u.description,
+            "rate": u.rate,
+            "monthly_salary": u.monthly_salary,
+            "default_rate": Setting.get().default_rate,
+            "groups": GroupSerializer(groups, many=True, context={"request": request}).data,
+            "salary": services.salary_of(u, _month(request)),
+        }
+
+    def get(self, request, pk):
+        return Response(self._payload(request, self._staff(pk)))
+
+    def patch(self, request, pk):
+        u = self._staff(pk)
+        if request.user.perm("sal") < 2:
+            raise PermissionDenied("Oylikni o'zgartirishga ruxsat yo'q")
+        field = "monthly_salary" if u.role == Role.SUPPORT else "rate"
+        raw = request.data.get(field, request.data.get("value"))
+        if raw in ("", None):
+            if field == "monthly_salary":
+                raise BusinessError("Oylik summasini kiriting")
+            u.rate = None
+        else:
+            try:
+                val = int(raw)
+            except (TypeError, ValueError):
+                raise BusinessError("Summa butun son bo'lsin") from None
+            if val < 0:
+                raise BusinessError("Summa manfiy bo'lmasin")
+            setattr(u, field, val)
+        u.save(update_fields=[field])
+        audit.log(request, "salary.rate", f"user={u.id}", f"{field}={getattr(u, field)}")
+        return Response(self._payload(request, u))
 
 
 class MySalaryView(APIView):

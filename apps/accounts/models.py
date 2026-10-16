@@ -31,6 +31,7 @@ class User(AbstractUser):
     monthly_salary = models.PositiveIntegerField(default=0, help_text="Support teacher belgilangan oyligi")
     work_from = models.DateField(null=True, blank=True)
     note = models.CharField(max_length=255, blank=True)
+    description = models.TextField("Tavsif", max_length=2000, blank=True, help_text="Xodim haqida ma'lumot (tajriba, izoh)")
     perms = models.JSONField(default=dict, blank=True, help_text="Bo'lim -> 0 yo'q, 1 ko'rish, 2 tahrirlash")
     must_change_password = models.BooleanField(default=False)
     archived_at = models.DateTimeField(null=True, blank=True)

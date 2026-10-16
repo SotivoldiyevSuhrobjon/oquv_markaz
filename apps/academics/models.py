@@ -23,6 +23,18 @@ class Subject(models.Model):
         return self.name
 
 
+class Room(models.Model):
+    """Xona. Admin yangisini qo'sha oladi (jadval va tanlov ro'yxatida chiqadi)."""
+
+    name = models.CharField(max_length=10, unique=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Group(models.Model):
     DAYS = [("DCJ", "Du-Chor-Ju"), ("SPSh", "Se-Pay-Sha")]
 

@@ -14,7 +14,7 @@ services:
     ports: ["5432:5432"]
   web:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
     environment:
       DJANGO_DEBUG: "1"
       DATABASE_URL: postgres://markaz:markaz@db:5432/markaz

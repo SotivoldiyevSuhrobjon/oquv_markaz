@@ -69,6 +69,7 @@ class StaffSerializer(serializers.ModelSerializer):
             "birth_date",
             "work_from",
             "note",
+            "description",
             "rate",
             "monthly_salary",
             "perms",
