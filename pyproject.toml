@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "S", "UP", "DJ", "C4", "SIM"]
+ignore = ["S101", "E501", "DJ001", "DJ008", "C408"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+"config/settings.py" = ["S105"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+addopts = "-q --cov=apps --cov-report=term-missing:skip-covered --cov-fail-under=70"
+python_files = ["test_*.py"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "migrations"]

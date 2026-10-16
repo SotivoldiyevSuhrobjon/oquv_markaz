@@ -1,0 +1,26 @@
+# Lokal ishlab chiqish: docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: markaz
+      POSTGRES_USER: markaz
+      POSTGRES_PASSWORD: markaz
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U markaz"]
+      interval: 5s
+      retries: 10
+    ports: ["5432:5432"]
+  web:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_DEBUG: "1"
+      DATABASE_URL: postgres://markaz:markaz@db:5432/markaz
+    volumes: [".:/app"]
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+volumes:
+  pgdata:

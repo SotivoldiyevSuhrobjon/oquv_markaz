@@ -1,0 +1,12 @@
+.git
+.venv
+.env
+.idea
+data
+backups
+db.sqlite3
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.github

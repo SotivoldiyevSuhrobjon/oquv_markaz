@@ -1,0 +1,39 @@
+# Serverda (papka: /opt/markaz):  docker compose -f docker-compose.prod.yml up -d
+# Ikki rejim:
+#  1) Serverda nginx allaqachon bor (masalan duckdns + certbot) -> faqat db+web ishga tushadi, web 127.0.0.1:8001 da tinglaydi,
+#     host nginx shu portga proxy qiladi (deploy/nginx/host-nginx.conf).
+#  2) Hammasi konteynerda: docker compose -f docker-compose.prod.yml --profile nginx up -d  (./certs/ ichida fullchain.pem, privkey.pem kerak)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      retries: 10
+  web:
+    image: ${IMAGE:-ghcr.io/OWNER/oquv-markaz:latest}
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["127.0.0.1:${WEB_PORT:-8001}:8000"]
+    volumes: ["./data:/app/data"]   # Excel va xodim parollari fayli shu yerga qo'yiladi (image ichiga kirmaydi)
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+  nginx:
+    profiles: ["nginx"]
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/proxy.inc:/etc/nginx/conf.d/proxy.inc:ro
+      - ./certs:/etc/nginx/certs:ro
+volumes:
+  pgdata:

@@ -1,0 +1,69 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_DB: markaz, POSTGRES_USER: markaz, POSTGRES_PASSWORD: markaz}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U markaz" --health-interval 5s --health-retries 10
+    env:
+      DJANGO_TESTING: "1"
+      DATABASE_URL: postgres://markaz:markaz@localhost:5432/markaz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -r requirements/dev.txt
+      - name: Lint (ruff)
+        run: ruff check . && ruff format --check .
+      - name: Xavfsizlik (bandit)
+        run: bandit -q -c pyproject.toml -r apps config
+      - name: Zaif kutubxonalar (pip-audit)
+        run: pip-audit -r requirements/base.txt
+      - name: Migratsiyalar sinxronmi
+        run: python manage.py makemigrations --check --dry-run
+      - name: Deploy xavfsizlik tekshiruvi
+        run: python manage.py check --deploy --fail-level WARNING
+        env:
+          DJANGO_TESTING: "0"
+          DJANGO_DEBUG: "0"
+          DJANGO_SECRET_KEY: ci-only-secret-key-ci-only-secret-key-ci-only-secret-key-1234567890
+          DJANGO_ALLOWED_HOSTS: example.uz
+      - name: Testlar
+        run: pytest
+  docker:
+    # Dockerfile lint + image haqiqatan yig'ilishi + konteyner ichida healthcheck (GitHub'da Docker bor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with: {dockerfile: Dockerfile}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: markaz-ci:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Konteynerni ishga tushirib healthz tekshirish
+        run: |
+          docker run -d --name t -p 8000:8000 \
+            -e DJANGO_SECRET_KEY=ci-only-secret-key-$(date +%s)-xxxxxxxxxxxxxxxxxxxxxxxx \
+            -e DJANGO_DEBUG=0 -e DJANGO_SSL_REDIRECT=0 -e DJANGO_ALLOWED_HOSTS=localhost \
+            -e DATABASE_URL=sqlite:////tmp/ci.sqlite3 markaz-ci:test
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/healthz/ && exit 0; sleep 2; done
+          docker logs t; exit 1
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker-compose.yml config -q
+      - run: IMAGE=x docker compose -f docker-compose.prod.yml config -q
