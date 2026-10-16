@@ -55,15 +55,16 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Konteynerni ishga tushirib healthz tekshirish
         run: |
-          docker run -d --name t -p 8000:8000 \
+          docker run -d --name markaz-ci -p 8000:8000 \
             -e DJANGO_SECRET_KEY=ci-only-secret-key-$(date +%s)-xxxxxxxxxxxxxxxxxxxxxxxx \
             -e DJANGO_DEBUG=0 -e DJANGO_SSL_REDIRECT=0 -e DJANGO_ALLOWED_HOSTS=localhost \
             -e DATABASE_URL=sqlite:////tmp/ci.sqlite3 markaz-ci:test
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/healthz/ && exit 0; sleep 2; done
-          docker logs t; exit 1
+          docker logs markaz-ci; exit 1
   compose-config:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: cp .env.example .env   # prod compose env_file: .env talab qiladi
       - run: docker compose -f docker-compose.yml config -q
       - run: IMAGE=x docker compose -f docker-compose.prod.yml config -q
