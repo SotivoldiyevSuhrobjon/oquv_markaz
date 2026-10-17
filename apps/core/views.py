@@ -121,6 +121,9 @@ class BackupRestoreView(APIView):
             from .exceptions import BusinessError
 
             raise BusinessError("Tasdiqlash uchun zaxira nomini kiriting")
+        actor = request.user.get_username()
         backup.restore(name)
-        audit.log(request, "backup.restore", name)
+        # Tiklangan zaxirada bu admin bo'lmasligi mumkin — shunda yozuv foydalanuvchisiz saqlanadi
+        still = type(request.user).objects.filter(pk=request.user.pk).first()
+        audit.log(request if still else None, "backup.restore", name, "" if still else f"bajargan: {actor}", user=still)
         return Response({"ok": True})

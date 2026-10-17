@@ -116,6 +116,9 @@ def test_backup_create_list_restore(admin, administrator, teacher, tmp_path, set
     assert c.post(f"/api/backups/{name}/restore/", {"confirm": "x"}, format="json").status_code == 400
     assert c.post(f"/api/backups/{name}/restore/", {"confirm": name}, format="json").status_code == 200
     assert list(Student.objects.values_list("full_name", flat=True)) == ["Birinchi"]
+    from apps.accounts.models import User
+
+    assert set(User.objects.values_list("pk", flat=True)) == {admin.pk, administrator.pk, teacher.pk}  # id'lar saqlanadi
     assert any(b["safety"] for b in c.get("/api/backups/").json())
 
 

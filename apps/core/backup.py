@@ -32,8 +32,9 @@ def path_of(name: str) -> Path:
 
 
 def make(tag: str = "") -> Path:
+    # --natural-primary ishlatilmaydi: tiklangach foydalanuvchilar id'si o'zgarmasligi kerak (tarix/FK buzilmasligi uchun)
     buf = io.StringIO()
-    call_command("dumpdata", "--natural-foreign", "--natural-primary", exclude=EXCLUDE, stdout=buf, verbosity=0)
+    call_command("dumpdata", "--natural-foreign", exclude=EXCLUDE, stdout=buf, verbosity=0)
     stamp = timezone.now().strftime("%Y%m%d-%H%M%S")
     p = backup_dir() / f"backup-{stamp}{('-' + tag) if tag else ''}.json.gz"
     with gzip.open(p, "wt", encoding="utf-8") as f:
