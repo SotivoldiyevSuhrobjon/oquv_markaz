@@ -12,7 +12,9 @@ class Subject(models.Model):
     name = models.CharField(max_length=60)
     price = models.PositiveIntegerField(default=600000, help_text="Oylik narx (so'm)")
     has_levels = models.BooleanField(default=False, help_text="A1–C2 darajalar bormi")
-    is_kids = models.BooleanField(default=False, help_text="1+1+1 soat: Math/English almashinuvi + support")
+    is_kids = models.BooleanField(
+        default=False, help_text="2 soat: 1 soat Math + 1 soat English (Kids1/Kids2 almashadi); support darsi alohida 1 soat"
+    )
     prefix = models.CharField(max_length=10, blank=True, help_text="Guruh nomi old qo'shimchasi (Mat_, E)")
     is_active = models.BooleanField(default=True)
 

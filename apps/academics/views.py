@@ -123,6 +123,11 @@ class GroupViewSet(AuditMixin, viewsets.ModelViewSet):
                     out.append({"group": s.name, **c})
         return Response(out)
 
+    @action(detail=False, methods=["get"], url_path="support-plan")
+    def support_plan(self, request):
+        """Support soati (asosiy dars tugagach 1 soat) va dastur topgan bo'sh xona — har bir support bor guruh uchun."""
+        return Response(schedule.support_plan(services.all_slots(), services.rooms()))
+
     @action(detail=True, methods=["get"])
     def suggest(self, request, pk=None):
         g = self.get_object()
@@ -141,7 +146,9 @@ class GroupViewSet(AuditMixin, viewsets.ModelViewSet):
         if len(users) != len(ids):
             raise BusinessError("O'qituvchi topilmadi yoki faol emas")
         before = services.slot_of(g)
-        after = schedule.Slot(g.id, g.name, g.days, g.start_hour, g.room, g.subject.is_kids, g.kids_order, [users[i].username for i in ids])
+        after = schedule.Slot(
+            g.id, g.name, g.days, g.start_hour, g.room, g.subject.is_kids, g.kids_order, [users[i].username for i in ids], before.supports
+        )
         bad = schedule.new_conflicts(before, after, services.all_slots(exclude_id=g.id))
         if bad:
             return Response({"schedule": [c["message"] for c in bad]}, status=status.HTTP_400_BAD_REQUEST)
@@ -157,6 +164,13 @@ class GroupViewSet(AuditMixin, viewsets.ModelViewSet):
         users = User.objects.filter(id__in=ids, role=Role.SUPPORT, is_active=True)
         if users.count() != len(set(ids)):
             raise BusinessError("Support teacher topilmadi")
+        before = services.slot_of(g)
+        after = schedule.Slot(
+            g.id, g.name, g.days, g.start_hour, g.room, g.subject.is_kids, g.kids_order, before.teachers, [u.username for u in users]
+        )
+        bad = schedule.new_conflicts(before, after, services.all_slots(exclude_id=g.id))
+        if bad:
+            return Response({"schedule": [c["message"] for c in bad]}, status=status.HTTP_400_BAD_REQUEST)
         g.supports.set(users)
         audit.log(request, "group.supports", g, str(list(users.values_list("username", flat=True))))
         return Response(self.get_serializer(self.get_queryset().get(pk=g.pk)).data)

@@ -204,3 +204,6 @@ a[href^="tel:"]{color:var(--pri,#3b4fd8);text-decoration:none;font-weight:600}a[
 img.mk{width:34px;height:34px;border-radius:10px;background:#fff;object-fit:contain;padding:1px;box-shadow:0 2px 10px rgba(0,0,0,.25);vertical-align:middle;margin-right:8px}
 .lg-logo{width:clamp(150px,26vw,300px);height:auto;margin-bottom:10px;filter:drop-shadow(0 10px 18px rgba(26,35,102,.18))}
 .lg-art{background:radial-gradient(700px 480px at 25% 15%,#ffffff,transparent 70%),linear-gradient(150deg,#f4f7ff,#dbe5ff 70%,#c9d7ff)!important;color:#1a2366!important}.lg-art h1{color:#1a2366}.lg-art p{color:#4a5688!important}
+
+.t-s{background:repeating-linear-gradient(135deg,#e7f6ee,#e7f6ee 8px,#d3eee0 8px,#d3eee0 16px);color:#0f5132!important;border:1.5px dashed #2fb36d}.t-s b,.t-s .wkt,.t-s .wkw{color:#0f5132}.lgd.s{background:repeating-linear-gradient(135deg,#e7f6ee,#e7f6ee 3px,#bfe6d0 3px,#bfe6d0 6px);border:1px dashed #2fb36d}
+.wkh .chip{position:absolute;top:8px;right:8px;width:auto;min-height:0;line-height:1.2}

@@ -99,6 +99,7 @@ class GroupSerializer(serializers.ModelSerializer):
             subject.is_kids,
             attrs.get("kids_order", g.kids_order if g else "M"),
             base.teachers,
+            base.supports,
         )
 
 

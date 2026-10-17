@@ -192,3 +192,20 @@ def test_teacher_extra_permission(admin, teacher, api):
     teacher.refresh_from_db()
     assert api(teacher).get("/api/finance/overview/").status_code == 200
     assert api(teacher).post("/api/students/", {"full_name": "x", "started_on": "2026-09-01"}, format="json").status_code == 403
+
+
+def test_support_plan_endpoint_and_support_conflict(admin, api, math):
+    import datetime as dt
+
+    from apps.academics.models import Group
+    from apps.accounts.models import Role, User
+
+    s1 = User.objects.create_user(username="sup1", password="x", role=Role.SUPPORT)
+    g1 = Group.objects.create(name="M1", subject=math, room="101", days="DCJ", start_time=dt.time(8, 0))
+    g2 = Group.objects.create(name="M2", subject=math, room="102", days="DCJ", start_time=dt.time(8, 0))
+    c = api(admin)
+    assert c.post(f"/api/groups/{g1.id}/supports/", {"supports": [s1.id]}, format="json").status_code == 200
+    r = c.post(f"/api/groups/{g2.id}/supports/", {"supports": [s1.id]}, format="json")
+    assert r.status_code == 400 and r.json()["schedule"]
+    plan = c.get("/api/groups/support-plan/").json()
+    assert plan == [{"group": g1.id, "name": "M1", "days": "DCJ", "hour": 10, "room": "101", "own_room": True}]

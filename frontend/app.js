@@ -177,6 +177,7 @@ async function run(fn, keepModal = true) {
 
 const subjects = async () => { if (!S.subj) S.subj = await list('/subjects/'); return S.subj; };
 const roomList = async () => (S.rooms = await list('/rooms/'));
+const loadPlan = async () => { if (!isT() && S.d.room) S.d.room.sp = await api('/groups/support-plan/').catch(() => S.d.room.sp || []); };
 const loadCf = async () => { if (!isT()) S.cf = await api('/groups/conflicts/').catch(() => S.cf || []); };
 const settings = async () => { if (!S.set) S.set = await api('/settings/'); return S.set; };
 function months() {
@@ -215,7 +216,7 @@ const L = {
     const s = (S.d.sal = S.d.sal || { month: curMonth() });
     if (isT()) s.me = await api('/salary/me/?month=' + s.month); else s.rows = await api('/salary/?month=' + s.month);
   },
-  async room() { await Promise.all([subjects(), roomList()]); S.d.room = S.d.room || { days: 'DCJ', panel: '', view: 'cards', h: Math.min(18, Math.max(8, new Date().getHours())) }; S.d.room.groups = await list('/groups/'); S.d.room.staff = await list('/staff/').catch(() => []); await loadCf(); },
+  async room() { await Promise.all([subjects(), roomList()]); S.d.room = S.d.room || { days: 'DCJ', panel: '', view: 'cards', h: Math.min(18, Math.max(8, new Date().getHours())) }; S.d.room.groups = await list('/groups/'); S.d.room.staff = await list('/staff/').catch(() => []); await loadCf(); await loadPlan(); },
   async stf() {
     await subjects();
     const s = (S.d.stf = S.d.stf || { arch: false });
@@ -308,8 +309,8 @@ function teachersHtml(g) {
 /* ---- Band/bo'sh hisoblash (backend schedule.py bilan bir xil qoidalar) ---- */
 const slotOf = (g, over = {}) => ({ id: g.id, name: g.name, days: g.days, hour: g.start_time ? +g.start_time.slice(0, 2) : null, room: g.room, kids: isKidsG(g), order: g.kids_order, teachers: g.teachers.map((t) => t.id), ...over });
 const ovl = (a, b) => a[0] < b[1] && b[0] < a[1];
-const occ = (x) => [x.hour, x.hour + (x.kids ? 3 : 2)];
-const twin = (x, i) => { const t = x.hour; if (!x.kids) return [t, t + 2]; const eF = x.order === 'E', eng = eF ? [t, t + 1] : [t + 1, t + 2], mat = eF ? [t + 1, t + 2] : [t, t + 1]; return i === 0 ? eng : i === 1 ? mat : [t, t + 3]; };
+const occ = (x) => [x.hour, x.hour + 2];
+const twin = (x, i) => { const t = x.hour; if (!x.kids) return [t, t + 2]; const eF = x.order === 'E', eng = eF ? [t, t + 1] : [t + 1, t + 2], mat = eF ? [t + 1, t + 2] : [t, t + 1]; return i === 0 ? eng : i === 1 ? mat : [t, t + 2]; };
 const othersOf = (all, id) => (all || []).filter((g) => g.id !== id && g.days && g.start_time).map((g) => slotOf(g));
 const live = (c) => c.days && c.hour !== null && !Number.isNaN(c.hour);
 const roomBy = (c, room, others) => { if (!live(c) || !room) return ''; const o = others.find((x) => x.days === c.days && x.room === room && ovl(occ({ ...c, room }), occ(x))); return o ? o.name : ''; };
@@ -418,9 +419,11 @@ const V = {
     const r = S.d.room; if (!r) return '';
     const eRoom = can('room') >= 2, rooms = roomsOf(r.groups);
     const hrs = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-    const kidsLen = (g) => ((S.subj || []).find((s) => s.slug === g.subject)?.is_kids ? 3 : 2);
+    const kidsLen = () => 2;
     const sh = (g) => +g.start_time.slice(0, 2), p2 = (h) => String(h).padStart(2, '0') + ':00';
     const gs = r.groups.filter((g) => g.days === r.days && g.start_time && g.room);
+    const sp = (r.sp || []).filter((x) => x.days === r.days), supNames = (id) => (r.groups.find((g) => g.id === id)?.supports || []).map((x) => x.name);
+    const spIn = (rm, hh) => sp.filter((x) => x.room === rm && x.hour === hh);
     const cfm = {}; (S.cf || []).forEach((c) => { (cfm[c.group] = cfm[c.group] || []).push(c.message); (cfm[c.with] = cfm[c.with] || []).push(`${c.group}: ${c.message}`); });
     const cell = (room, h) => {
       const hit = gs.filter((g) => g.room === room && h >= sh(g) && h < sh(g) + kidsLen(g));
@@ -448,20 +451,21 @@ const V = {
       if (!isKidsG(g)) return { kind: 'main', label: 'Asosiy dars · 2 soat', range: `${p2(st)}–${p2(st + 2)}`, who: g.teachers.map((t) => t.name) };
       const eng = g.teachers.find((t) => t.position === 0), mat = g.teachers.find((t) => t.position === 1);
       const seq = g.kids_order === 'E' ? [[eng, 'English'], [mat, 'Math']] : [[mat, 'Math'], [eng, 'English']];
-      if (i < 2) return { kind: 'main', label: `${seq[i][1]} · 1 soat`, range: `${p2(h)}–${p2(h + 1)}`, who: seq[i][0] ? [seq[i][0].name] : [] };
-      return { kind: 'sup', label: 'Support · 1 soat', range: `${p2(h)}–${p2(h + 1)}`, who: g.supports.map((x) => x.name) };
+      return { kind: 'main', label: `${seq[i][1]} · 1 soat`, range: `${p2(h)}–${p2(h + 1)}`, who: seq[i][0] ? [seq[i][0].name] : [] };
     };
+    const supCard = (x) => `<div style="margin-top:6px"><a href="#" class="gl" data-a="rgrp" data-v="${x.group}">${esc(x.name)}</a> <span class="tag">Support</span><div class="mu">${p2(x.hour)}–${p2(x.hour + 1)}${x.own_room ? ' · guruhning o‘z xonasi' : ' · asosiy xona band — dastur shu xonani topdi'}</div><div class="rw2"><b>${supNames(x.group).map(esc).join(' + ') || '—'}</b></div></div>`;
     const rcard = (rm) => {
-      const hit = gs.filter((g) => g.room === rm && h >= sh(g) && h < sh(g) + kidsLen(g));
+      const hit = gs.filter((g) => g.room === rm && h >= sh(g) && h < sh(g) + kidsLen(g)), sin = spIn(rm, h);
+      if (!hit.length && sin.length) return `<div class="card rc busy"><div class="row" style="margin:0"><b style="flex:1">Xona ${esc(rm)}</b><span class="tag mid">Support</span></div>${sin.map(supCard).join('<hr>')}</div>`;
       if (!hit.length) return `<div class="card rc free" ${eRoom ? `data-a="rslot" data-v="${esc(rm)}|${h}" style="cursor:pointer" title="Shu vaqtga guruh biriktirish"` : ''}><div class="row" style="margin:0"><b style="flex:1">Xona ${esc(rm)}</b><span class="tag ok">Bo‘sh</span></div><div class="mu">Dars yo‘q${eRoom ? ' · bosib guruh biriktiring' : ''}</div></div>`;
-      return `<div class="card rc busy ${hit.length > 1 || hit.some((g) => cfm[g.name]) ? 'cx' : ''}"><div class="row" style="margin:0"><b style="flex:1">Xona ${esc(rm)}</b><span class="tag mid">Band</span></div>${hit.map((g) => { const q = seg(g); return `<div style="margin-top:6px"><a href="#" class="gl" data-a="rgrp" data-v="${g.id}">${cfm[g.name] ? '⚠ ' : ''}${esc(g.name)}</a> ${g.level ? `<span class="tag">${esc(g.level)}</span>` : ''}<div class="mu">${q.label} · ${q.range}</div><div class="rw2"><b>${q.who.length ? q.who.map(esc).join(' + ') : '—'}</b></div></div>`; }).join('<hr>')}</div>`;
+      return `<div class="card rc busy ${hit.length > 1 || hit.some((g) => cfm[g.name]) ? 'cx' : ''}"><div class="row" style="margin:0"><b style="flex:1">Xona ${esc(rm)}</b><span class="tag mid">Band</span></div>${hit.map((g) => { const q = seg(g); return `<div style="margin-top:6px"><a href="#" class="gl" data-a="rgrp" data-v="${g.id}">${cfm[g.name] ? '⚠ ' : ''}${esc(g.name)}</a> ${g.level ? `<span class="tag">${esc(g.level)}</span>` : ''}<div class="mu">${q.label} · ${q.range}</div><div class="rw2"><b>${q.who.length ? q.who.map(esc).join(' + ') : '—'}</b></div></div>`; }).join('<hr>')}${sin.map(supCard).join('')}</div>`;
     };
     const gd = r.groups.filter((g) => g.days === r.days && g.start_time);
     const staffBusy = (u) => {
       for (const g of gd) {
         const x = slotOf(g), ti = x.teachers.indexOf(u.id);
         if (u.role === 'teacher' && ti >= 0) { const w = twin(x, ti); if (h >= w[0] && h < w[1]) return `${g.name}${g.room ? ' · xona ' + g.room : ''} · ${p2(w[0])}–${p2(w[1])}`; }
-        if (u.role === 'support' && isKidsG(g) && g.supports.some((y) => y.id === u.id) && h === sh(g) + 2) return `${g.name}${g.room ? ' · xona ' + g.room : ''} · ${p2(h)}–${p2(h + 1)}`;
+        if (u.role === 'support' && g.supports.some((y) => y.id === u.id) && h === sh(g) + 2) { const pl = sp.find((x) => x.group === g.id); return `${g.name}${pl && pl.room ? ' · xona ' + pl.room : ''} · ${p2(h)}–${p2(h + 1)}`; }
       }
       return '';
     };
@@ -474,11 +478,13 @@ const V = {
       const list = gs.filter((g) => g.room === rm), [lane, nl] = laneOf(list);
       return list.map((g) => {
         const L0 = lane.get(g.id), bad = !!cfm[g.name], len = kidsLen(g);
-        return `<a href="#" class="wkb t-${bad ? 'x' : tone(g)}" data-a="rgrp" data-v="${g.id}" style="grid-column:${ci + 2};grid-row:${sh(g) - 7} / span ${len};width:calc(${100 / nl}% - 6px);margin-left:calc(${(100 / nl) * L0}% + 3px)" title="${esc(g.name)} · ${p2(sh(g))}–${p2(sh(g) + len)}${bad ? ' · to‘qnashuv: ' + esc(cfm[g.name][0]) : ''}"><b>${bad ? '⚠ ' : ''}${esc(g.name)}</b><span class="wkt">${p2(sh(g))}–${p2(sh(g) + len)} · ${g.student_count} o‘q.</span><span class="wkw">${g.teachers.map((t) => esc(t.name)).join(' + ') || '<i>o‘qituvchi yo‘q</i>'}</span></a>`;
+        return `<a href="#" class="wkb t-${bad ? 'x' : tone(g)}" data-a="rgrp" data-v="${g.id}" style="grid-column:${ci + 2};grid-row:${sh(g) - 6} / span ${len};width:calc(${100 / nl}% - 6px);margin-left:calc(${(100 / nl) * L0}% + 3px)" title="${esc(g.name)} · ${p2(sh(g))}–${p2(sh(g) + len)}${bad ? ' · to‘qnashuv: ' + esc(cfm[g.name][0]) : ''}"><b>${bad ? '⚠ ' : ''}${esc(g.name)}</b><span class="wkt">${p2(sh(g))}–${p2(sh(g) + len)} · ${g.student_count} o‘q.</span><span class="wkw">${g.teachers.map((t) => esc(t.name)).join(' + ') || '<i>o‘qituvchi yo‘q</i>'}</span></a>`;
       }).join('');
     }).join('');
-    const bg = hrs.map((x, ri) => rooms.map((rm, ci) => { const busy = gs.some((g) => g.room === rm && x >= sh(g) && x < sh(g) + kidsLen(g)); return busy || !eRoom ? `<div class="wkc" style="grid-column:${ci + 2};grid-row:${ri + 2}"></div>` : `<button class="wkc add" data-a="rslot" data-v="${esc(rm)}|${x}" title="Xona ${esc(rm)} · ${p2(x)} — guruh biriktirish" style="grid-column:${ci + 2};grid-row:${ri + 2}">＋</button>`; }).join('')).join('');
-    const tableH = `<div class="wkw3"><div class="wk" style="grid-template-columns:62px repeat(${rooms.length},minmax(190px,1fr));grid-template-rows:46px repeat(${hrs.length},68px)"><div class="wkh corner">${DN[r.days]}</div>${rooms.map((rm, ci) => `<div class="wkh" style="grid-column:${ci + 2};grid-row:1">Xona ${esc(rm)}<small>${r.groups.filter((g) => g.room === rm).length} guruh</small>${eRoom && rid(rm) && !r.groups.some((g) => g.room === rm) ? `<button class="chip" data-a="roomdel" data-v="${rid(rm).id}" title="Xonani o‘chirish" style="padding:0 6px">✕</button>` : ''}</div>`).join('')}${hrs.map((x, ri) => `<div class="wkt0" style="grid-row:${ri + 2}">${p2(x)}</div>`).join('')}${bg}${blocks}</div></div><div class="demo"><span class="lgd k"></span> Kids <span class="lgd m"></span> Matematika <span class="lgd e"></span> English <span class="lgd x"></span> to‘qnashuv · bo‘sh katakdagi <b>＋</b> ni bossangiz shu vaqtga guruh biriktirasiz · blokni bossangiz tahrirlash oynasi ochiladi. Kids 3 soat (1+1+1), qolganlari 2 soat.</div>`;
+    const spBlocks = sp.filter((x) => x.room && rooms.includes(x.room) && x.hour >= 8 && x.hour <= 18).map((x) => `<a href="#" class="wkb t-s" data-a="rgrp" data-v="${x.group}" style="grid-column:${rooms.indexOf(x.room) + 2};grid-row:${x.hour - 6}" title="Support · ${esc(x.name)} · ${p2(x.hour)}–${p2(x.hour + 1)}"><b>Support · ${esc(x.name)}</b><span class="wkt">${p2(x.hour)}–${p2(x.hour + 1)}${x.own_room ? '' : ' · boshqa xona'}</span><span class="wkw">${supNames(x.group).map(esc).join(' + ')}</span></a>`).join('');
+    const noRoom = sp.filter((x) => !x.room);
+    const bg = hrs.map((x, ri) => rooms.map((rm, ci) => { const busy = gs.some((g) => g.room === rm && x >= sh(g) && x < sh(g) + kidsLen(g)) || spIn(rm, x).length > 0; return busy || !eRoom ? `<div class="wkc" style="grid-column:${ci + 2};grid-row:${ri + 2}"></div>` : `<button class="wkc add" data-a="rslot" data-v="${esc(rm)}|${x}" title="Xona ${esc(rm)} · ${p2(x)} — guruh biriktirish" style="grid-column:${ci + 2};grid-row:${ri + 2}">＋</button>`; }).join('')).join('');
+    const tableH = `<div class="wkw3"><div class="wk" style="grid-template-columns:62px repeat(${rooms.length},minmax(190px,1fr));grid-template-rows:46px repeat(${hrs.length},68px)"><div class="wkh corner">${DN[r.days]}</div>${rooms.map((rm, ci) => `<div class="wkh" style="grid-column:${ci + 2};grid-row:1">Xona ${esc(rm)}<small>${r.groups.filter((g) => g.room === rm).length} guruh</small>${eRoom && rid(rm) && !r.groups.some((g) => g.room === rm) ? `<button class="chip" data-a="roomdel" data-v="${rid(rm).id}" title="Xonani o‘chirish" style="padding:0 6px">✕</button>` : ''}</div>`).join('')}${hrs.map((x, ri) => `<div class="wkt0" style="grid-row:${ri + 2}">${p2(x)}</div>`).join('')}${bg}${blocks}${spBlocks}</div></div>${noRoom.length ? `<div class="card msg err">⚠ Support uchun bo‘sh xona topilmadi: ${noRoom.map((x) => `${esc(x.name)} (${p2(x.hour)})`).join(', ')}. Xona qo‘shing yoki vaqtni o‘zgartiring.</div>` : ''}<div class="demo"><span class="lgd k"></span> Kids <span class="lgd m"></span> Matematika <span class="lgd e"></span> English <span class="lgd x"></span> to‘qnashuv · bo‘sh katakdagi <b>＋</b> ni bossangiz shu vaqtga guruh biriktirasiz · blokni bossangiz tahrirlash oynasi ochiladi. <span class="lgd s"></span> Support (1 soat, asosiy darsdan keyin; bo‘sh xonani dastur o‘zi topadi). Asosiy dars hammasida 2 soat; Kids’da 1 soat Math + 1 soat English, Kids1/Kids2 almashadi.</div>`;
     return `${head}${panel}${cfl}${r.view === 'grid' ? tableH : cardsH}${looseH}`;
   },
 
@@ -595,6 +601,7 @@ function groupModal(m, shell) {
   const sched = eRoom ? `<form data-f="gsched" class="fg" style="margin:8px 0"><label>Xona<select name="room" data-a="gsf"><option value="">— xona tanlang —</option>${roomOpts}</select></label><label>Kunlar<select name="days" data-a="gsf"><option value="">—</option>${Object.entries(DN).map(([k, v]) => opt(k, v, cur.days)).join('')}</select></label><label>Boshlanish<select name="start_time" data-a="gsf"><option value="">—</option>${hourOpts}</select></label>${isKids ? `<label>Kids tartibi (faqat shu guruh)<select name="kids_order" data-a="gsf">${opt('M', 'Math → English', cur.order)}${opt('E', 'English → Math', cur.order)}</select></label>` : ''}${hasLv ? `<label>Daraja<select name="level" data-a="gsf"><option value="">—</option>${LV.map((l) => opt(l, l, dv('level', g.level))).join('')}</select></label>` : ''}<button class="btn pri">Jadvalni saqlash</button></form><div class="mu">“band” deb belgilangan xona, vaqt yoki o‘qituvchi tanlab bo‘lmaydi — shu vaqtda boshqa guruh bor.</div>` : `<div class="mu">${g.room ? 'Xona ' + esc(g.room) : ''} · ${DN[g.days] || '—'} · ${timeOf(g)}</div>`;
   const td = m.tdraft || {};
   const tch = eStf && m.staff ? `<form data-f="gteach" class="fg" style="margin:8px 0"><label>${isKids ? 'English o‘qituvchisi' : 'O‘qituvchi'}<select name="t0"><option value="">—</option>${m.staff.teachers.map((u) => busyOpt(u.id, u.full_name || u.username, td.t0 ?? g.teachers[0]?.id, teacherBy(base, u.id, 0, oth))).join('')}</select></label>${isKids ? `<label>Math o‘qituvchisi<select name="t1"><option value="">—</option>${m.staff.teachers.map((u) => busyOpt(u.id, u.full_name || u.username, td.t1 ?? g.teachers[1]?.id, teacherBy(base, u.id, 1, oth))).join('')}</select></label>` : ''}<button class="btn pri">O‘qituvchini saqlash</button></form>${isKids ? `<div class="mu">Dars tartibi: ${teachersHtml(g)}. Kids tartibi faqat shu guruhga ta'sir qiladi, boshqa guruhlar o'zgarmaydi.</div>` : ''}
+    ${g.supports.length && g.start_time ? `<div class="mu" style="margin:4px 0">Support darsi: <b>${hhmm(`${String(+g.start_time.slice(0, 2) + 2).padStart(2, '0')}:00`)}–${String(+g.start_time.slice(0, 2) + 3).padStart(2, '0')}:00</b>${(() => { const pl = ((S.d.room && S.d.room.sp) || []).find((x) => x.group === g.id); return pl ? (pl.room ? ` · xona ${esc(pl.room)}${pl.own_room ? '' : ' (guruh xonasi band — dastur topdi)'}` : ' · bo‘sh xona topilmadi') : ''; })()}</div>` : ''}
     ${true ? `<form data-f="gsup" class="row"><span class="mu">Support:</span>${m.staff.supports.map((u) => `<label class="mu"><input type="checkbox" name="s" value="${u.id}" ${g.supports.some((x) => x.id === u.id) ? 'checked' : ''}> ${esc(u.full_name || u.username)}</label>`).join('') || '<span class="mu">support yo‘q</span>'}<button class="chip">Saqlash</button></form>` : ''}` : `<div>${teachersHtml(g)}</div>`;
   const rows = st.map((s) => `<tr><td>${esc(s.full_name)}<div class="mu">${esc(s.phone || '')}${s.parent_phone ? ` · ota-ona: ${esc(s.parent_phone)}` : ''}</div></td><td class="num">${s.absences ? `<span class="tag" style="color:var(--lo)">${s.absences}</span>` : '—'}</td><td>${eNew ? `<button class="chip" data-a="unenr" data-v="${s.id}">Guruhdan chiqarish</button>` : ''} ${eArch ? `<button class="chip" data-a="archform" data-v="${s.id}">Arxivga</button>` : ''}</td></tr>${m.arch === s.id ? `<tr><td colspan="3"><form data-f="archstu" data-id="${s.id}" class="row" style="margin:0"><select name="status"><option value="left">Ketgan</option><option value="paused">To'xtatilgan</option><option value="later">Keyin boshlaydi</option><option value="rejected">Rad etdi</option></select><input name="reason" placeholder="Sabab"><input type="date" name="start" title="'Keyin boshlaydi' uchun sana"><button class="btn pri">Arxivga o'tkazish</button></form></td></tr>` : ''}`).join('');
   const add = eNew ? `<form data-f="findstu" class="row"><input name="q" placeholder="Mavjud o‘quvchini qidirib qo‘shish…" style="flex:1"><button class="chip">Qidirish</button></form>${(m.found || []).map((s) => `<div class="row" style="margin:2px 0"><span style="flex:1">${esc(s.full_name)} <span class="mu">${s.groups.map((x) => esc(x.name)).join(', ')}</span></span><button class="chip" data-a="enr" data-v="${s.id}">＋ Qo'shish</button></div>`).join('')}` : '';
@@ -814,7 +821,7 @@ async function refreshGroups() {
   if (S.d.new) S.d.new.groups = gs;
   if (S.d.att) S.d.att.groups = gs;
   if (S.d.room) S.d.room.groups = gs;
-  await loadCf(); if (S.d.dash) { S.d.dash.conflicts = S.cf; if (S.d.dash.stats) S.d.dash.stats.conflicts = (S.cf || []).length; }
+  await loadCf(); await loadPlan(); if (S.d.dash) { S.d.dash.conflicts = S.cf; if (S.d.dash.stats) S.d.dash.stats.conflicts = (S.cf || []).length; }
   if (S.mo && S.mo.t === 'grp') { S.mo.all = gs; S.mo.g = gs.find((x) => x.id === S.mo.g.id) || S.mo.g; }
 }
 async function reloadStu() {
@@ -868,7 +875,7 @@ const F = {
     try { const g = await post(`/groups/${S.mo.g.id}/teachers/`, { teachers: ids }); S.mo.err = null; S.mo.tdraft = null; S.mo.g = g; await refreshGroups(); ok("O'qituvchi saqlandi"); }
     catch (e) { if (e.data && e.data.schedule) { S.mo.err = e.data.schedule; toast(e.data.schedule.join('; '), 'err'); S.msg = null; } else throw e; }
   },
-  async gsup(f, form) { const ids = [...form.querySelectorAll('input[name=s]:checked')].map((i) => +i.value); S.mo.g = await post(`/groups/${S.mo.g.id}/supports/`, { supports: ids }); await refreshGroups(); ok('Support saqlandi'); },
+  async gsup(f, form) { const ids = [...form.querySelectorAll('input[name=s]:checked')].map((i) => +i.value); try { S.mo.g = await post(`/groups/${S.mo.g.id}/supports/`, { supports: ids }); S.mo.err = null; await refreshGroups(); ok('Support saqlandi'); } catch (e) { if (e.data && e.data.schedule) { S.mo.err = e.data.schedule; toast(e.data.schedule.join('; '), 'err'); S.msg = null; } else throw e; } },
   async findstu(f) { S.mo.found = (await list(`/students/?q=${encodeURIComponent(f.q)}`)).filter((s) => !s.groups.some((x) => x.id === S.mo.g.id)).slice(0, 8); },
   async archstu(f, form) { await post(`/students/${form.dataset.id}/archive/`, { status: f.status, reason: f.reason, start: f.start || null }); S.mo.arch = null; await loadGroupModal(); ok('Arxivga o‘tkazildi'); },
   async addstaff(f, form) {

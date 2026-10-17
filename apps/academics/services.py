@@ -14,11 +14,12 @@ from .schedule import Slot
 
 def slot_of(g: Group) -> Slot:
     teachers = [gt.teacher.username for gt in g.group_teachers.select_related("teacher").all()]
-    return Slot(g.id, g.name, g.days, g.start_hour, g.room, g.subject.is_kids, g.kids_order, teachers)
+    supports = [u.username for u in g.supports.all()]
+    return Slot(g.id, g.name, g.days, g.start_hour, g.room, g.subject.is_kids, g.kids_order, teachers, supports)
 
 
 def all_slots(exclude_id=None) -> list[Slot]:
-    qs = Group.objects.filter(is_active=True).select_related("subject").prefetch_related("group_teachers__teacher")
+    qs = Group.objects.filter(is_active=True).select_related("subject").prefetch_related("group_teachers__teacher", "supports")
     return [slot_of(g) for g in qs if g.id != exclude_id]
 
 
