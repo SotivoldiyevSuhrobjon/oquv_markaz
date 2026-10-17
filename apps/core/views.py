@@ -1,12 +1,14 @@
 from django.db import connection
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from rest_framework import serializers, viewsets
 from rest_framework.generics import RetrieveUpdateAPIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAdmin
 
-from . import audit
+from . import audit, backup
 from .models import AuditLog, Setting
 
 
@@ -45,7 +47,26 @@ class AuditViewSet(viewsets.ReadOnlyModelViewSet):
 class SettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Setting
-        fields = ("max_group_size", "default_rate", "default_price", "academic_start", "academic_months")
+        fields = (
+            "max_group_size",
+            "default_rate",
+            "default_price",
+            "academic_start",
+            "academic_months",
+            "alert_threshold",
+            "auto_next_month",
+            "auto_close_month",
+        )
+
+    def validate_academic_months(self, v):
+        if not 1 <= v <= 24:
+            raise serializers.ValidationError("1 dan 24 gacha bo'lsin")
+        return v
+
+    def validate_alert_threshold(self, v):
+        if not 1 <= v <= 30:
+            raise serializers.ValidationError("1 dan 30 gacha bo'lsin")
+        return v
 
     def validate_academic_start(self, v):
         from .utils import validate_month
@@ -67,3 +88,39 @@ class SettingView(RetrieveUpdateAPIView):
     def perform_update(self, ser):
         ser.save()
         audit.log(self.request, "settings.update", "", ", ".join(ser.validated_data))
+
+
+class BackupView(APIView):
+    """Zaxiralar: ro'yxat va yangisini olish (faqat admin)."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        return Response(backup.listing())
+
+    def post(self, request):
+        p = backup.make()
+        audit.log(request, "backup.create", p.name)
+        return Response({"name": p.name}, status=201)
+
+
+class BackupFileView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request, name):
+        p = backup.path_of(name)
+        audit.log(request, "backup.download", name)
+        return FileResponse(open(p, "rb"), as_attachment=True, filename=name)  # noqa: SIM115 - FileResponse yopadi
+
+
+class BackupRestoreView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, name):
+        if request.data.get("confirm") != name:
+            from .exceptions import BusinessError
+
+            raise BusinessError("Tasdiqlash uchun zaxira nomini kiriting")
+        backup.restore(name)
+        audit.log(request, "backup.restore", name)
+        return Response({"ok": True})

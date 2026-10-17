@@ -13,6 +13,7 @@ urlpatterns = router.urls + [
     path("students/<int:pk>/discount/", views.StudentDiscountView.as_view()),
     path("finance/overview/", views.OverviewView.as_view()),
     path("finance/month/", views.MonthRowsView.as_view()),
+    path("finance/calc/", views.CalcView.as_view()),
     path("finance/debtors/", views.DebtorsView.as_view()),
     path("finance/months/<str:month>/<str:op>/", views.MonthCloseView.as_view()),
     path("salary/", views.SalaryView.as_view()),

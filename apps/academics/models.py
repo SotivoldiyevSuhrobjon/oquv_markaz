@@ -82,12 +82,20 @@ class Student(models.Model):
         LEFT = "left", "Ketgan"
         PAUSED = "paused", "To'xtatilgan"
         LATER = "later", "Keyin boshlaydi"
+        REJECTED = "rejected", "Rad etdi"
 
     full_name = models.CharField(max_length=150, db_index=True)
     phone = models.CharField(
         max_length=20, blank=True, validators=[RegexValidator(r"^\+?\d{7,15}$", "Telefon faqat raqamlardan iborat bo'lsin")]
     )
+    parent_phone = models.CharField(
+        "Ota-ona telefoni",
+        max_length=20,
+        blank=True,
+        validators=[RegexValidator(r"^\+?\d{7,15}$", "Telefon faqat raqamlardan iborat bo'lsin")],
+    )
     district = models.CharField("Tuman", max_length=60, blank=True)
+    birth_date = models.DateField("Tug'ilgan sana", null=True, blank=True)
     class_name = models.CharField("Maktab sinfi", max_length=10, blank=True)
     note = models.CharField(max_length=255, blank=True)
     admitted_on = models.DateField(null=True, blank=True, help_text="Qabul sanasi")
@@ -139,6 +147,19 @@ class Attendance(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["session", "student"], name="uniq_session_student")]
+
+
+class SupportAttendance(models.Model):
+    """Support darsi davomati (asosiy darsdan keyingi yordam soati). Support oyligi o'quvchi soniga bog'liq emas — bu faqat hisob uchun."""
+
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="support_records")
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="support_attendance")
+    present = models.BooleanField()
+    marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    marked_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["session", "student"], name="uniq_support_session_student")]
 
 
 class ParentContact(models.Model):

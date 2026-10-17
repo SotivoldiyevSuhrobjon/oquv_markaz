@@ -13,4 +13,5 @@ urlpatterns = router.urls + [
     path("attendance/", views.AttendanceView.as_view()),
     path("attendance/<str:op>/", views.AttendanceView.as_view()),
     path("alerts/", views.AlertsView.as_view()),
+    path("contact-board/", views.ContactBoardView.as_view()),
 ]

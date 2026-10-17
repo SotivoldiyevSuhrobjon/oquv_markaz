@@ -3,6 +3,7 @@ from django.db import models
 
 SECTIONS = ("dash", "att", "pay", "sal", "room", "stf", "new", "arch")
 NONE, VIEW, EDIT = 0, 1, 2
+EXTRA_SECTIONS = ("pay", "room", "stf", "new", "arch")
 
 DEFAULT_PERMS = {
     "administrator": {"dash": EDIT, "att": EDIT, "pay": VIEW, "sal": NONE, "room": EDIT, "stf": VIEW, "new": EDIT, "arch": EDIT},
@@ -55,6 +56,8 @@ class User(AbstractUser):
         if self.role in DEFAULT_PERMS:
             base = DEFAULT_PERMS[self.role].get(section, NONE)
             return int(self.perms.get(section, base))
+        if section in EXTRA_SECTIONS:  # o'qituvchi/support: admin berishi mumkin bo'lgan qo'shimcha bo'limlar
+            return int(self.perms.get(section, NONE))
         return NONE
 
     def save(self, *args, **kwargs):

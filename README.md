@@ -1,4 +1,4 @@
-# Olimpiya akademiyasi — o'quv markaz boshqaruv tizimi
+# Olimpiada akademiyasi — o'quv markaz boshqaruv tizimi
 
 Django 5.2 + DRF + JWT, PostgreSQL, Docker, GitHub Actions (CI/CD). Interfeys (`frontend/`) to'liq API bilan ishlaydi va Django tomonidan `/` manzilida beriladi — alohida frontend serveri kerak emas.
 

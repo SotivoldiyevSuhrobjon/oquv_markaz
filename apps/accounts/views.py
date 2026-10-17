@@ -38,6 +38,20 @@ class LoginView(TokenObtainPairView):
         return resp
 
 
+class ImpersonateView(APIView):
+    """Admin xodim nomidan ko'rish uchun token oladi (faqat admin, admin bo'lmagan faol xodim). Tarixga yoziladi."""
+
+    def post(self, request, pk):
+        if request.user.role != Role.ADMIN:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        target = get_object_or_404(User, pk=pk)
+        if target.role == Role.ADMIN or not target.is_active or target.archived_at:
+            raise BusinessError("Bu xodim nomidan kirib bo'lmaydi")
+        refresh = RefreshToken.for_user(target)
+        audit.log(request, "auth.impersonate", target.username)
+        return Response({"access": str(refresh.access_token), "refresh": str(refresh), "user": MeSerializer(target).data})
+
+
 class LogoutView(APIView):
     def post(self, request):
         with contextlib.suppress(TokenError):

@@ -118,6 +118,7 @@ class OverviewView(APIView):
     section = "pay"
 
     def get(self, request):
+        services.rollover()
         return Response(services.month_overview(_month(request)))
 
 
@@ -126,8 +127,38 @@ class MonthRowsView(APIView):
     section = "pay"
 
     def get(self, request):
+        services.rollover()
         m = _month(request)
         return Response({"month": m, "closed": services.is_closed(m), "rows": services.month_rows(m)})
+
+
+class CalcView(APIView):
+    """To'lov kalkulyatori: qaysi kundan boshlasa, oyning qolgan darslariga mos summa."""
+
+    permission_classes = [SectionPermission]
+    section = "pay"
+
+    def get(self, request):
+        import datetime as dt
+
+        from apps.academics.models import Subject
+        from apps.core.exceptions import BusinessError
+
+        m, q = _month(request), request.query_params
+        days = q.get("days", "DCJ")
+        if days not in services.WEEKDAYS:
+            raise BusinessError("Kunlar noto'g'ri")
+        try:
+            start = dt.date.fromisoformat(q.get("from") or f"{m}-01")
+            discount = max(0, int(q.get("discount") or 0))
+        except ValueError:
+            raise BusinessError("Sana yoki chegirma noto'g'ri") from None
+        ids = [int(x) for x in (q.get("subjects") or "").split(",") if x.isdigit()]
+        base = max(0, sum(Subject.objects.filter(id__in=ids).values_list("price", flat=True)) - discount)
+        left, total = services.lessons(days, start, m)
+        return Response(
+            {"month": m, "lessons_left": left, "lessons_total": total, "full": base, "amount": round(base * left / total) if total else 0}
+        )
 
 
 class DebtorsView(APIView):
@@ -213,7 +244,14 @@ class SalaryView(APIView):
         m = request.data.get("month") or month_of(today())
         validate_month(m)
         services.ensure_open(m)
-        e = services.pay_salary(u, m, request.user)
+        raw = request.data.get("amount")
+        e = services.pay_salary(
+            u,
+            m,
+            request.user,
+            int(raw) if isinstance(raw, (int, str)) and str(raw).isdigit() else None,
+            str(request.data.get("note") or ""),
+        )
         audit.log(request, "salary.pay", f"user={u.id}", f"{m} {e.amount}")
         return Response({"paid": e.amount}, status=201)
 
@@ -248,6 +286,7 @@ class SalaryDetailView(APIView):
             "default_rate": Setting.get().default_rate,
             "groups": GroupSerializer(groups, many=True, context={"request": request}).data,
             "salary": services.salary_of(u, _month(request)),
+            "payments": services.salary_payments(u, _month(request)),
         }
 
     def get(self, request, pk):

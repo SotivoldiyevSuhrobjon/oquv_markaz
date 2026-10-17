@@ -247,17 +247,57 @@ def salary_of(user: User, month: str) -> dict:
 
 
 @transaction.atomic
-def pay_salary(user: User, month: str, by: User) -> CashEntry:
+def pay_salary(user: User, month: str, by: User, amount: int | None = None, note: str = "") -> CashEntry:
+    """amount berilmasa qolgan oylikning hammasi to'lanadi; berilsa — avans/qisman to'lov (oylik hisoblanmasdan oldin ham mumkin)."""
     row = salary_of(user, month)
-    if row["left"] <= 0:
-        raise BusinessError("Oylik to'liq to'langan")
+    if amount is None:
+        if row["left"] <= 0:
+            raise BusinessError("Oylik to'liq to'langan")
+        amount, note = row["left"], note or "Oylik"
+    else:
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+            raise BusinessError("Summa musbat butun son bo'lsin")
+        if amount > 100_000_000:
+            raise BusinessError("Summa juda katta")
+        note = note or ("Avans" if amount < row["left"] or row["accrued"] == 0 else "Oylik")
     return CashEntry.objects.create(
-        kind="chiqim", category="oylik", amount=row["left"], date=today(), month=month, staff=user, note="Oylik", by=by
+        kind="chiqim", category="oylik", amount=amount, date=today(), month=month, staff=user, note=note[:255], by=by
     )
+
+
+def salary_payments(user: User, month: str) -> list[dict]:
+    qs = CashEntry.objects.filter(kind="chiqim", category="oylik", staff=user, month=month).order_by("-date", "-id")
+    return [{"id": c.id, "date": c.date, "amount": c.amount, "note": c.note} for c in qs]
+
+
+def rollover() -> dict:
+    """Oy avtomatik o'tishi: yangi oyni ochadi va o'tgan oylarni (davomati yakunlangan bo'lsa) yopadi. Sozlamalarga bog'liq."""
+    s = Setting.get()
+    cur, out = month_of(today()), {"extended": 0, "closed": []}
+    if s.auto_next_month:
+        sy, sm = map(int, s.academic_start.split("-"))
+        cy, cm = map(int, cur.split("-"))
+        need = min(24, (cy - sy) * 12 + (cm - sm) + 1)
+        if need > s.academic_months:
+            out["extended"] = need - s.academic_months
+            s.academic_months = need
+            s.save()
+    if s.auto_close_month:
+        for m in academic_months():
+            if m >= cur or is_closed(m):
+                continue
+            if Session.objects.filter(date__startswith=m, finalized=False).exists():
+                continue
+            MonthClosing.objects.update_or_create(month=m, defaults={"is_closed": True, "closed_by": None, "closed_at": timezone.now()})
+            out["closed"].append(m)
+    return out
 
 
 def month_rows(month: str) -> list[dict]:
     """To'lov jadvali uchun: har bir faol o'quvchining shu oydagi holati (bitta so'rovda)."""
+    from apps.academics.services import activate_due_students
+
+    activate_due_students()
     students = list(Student.objects.filter(status=Student.Status.ACTIVE).prefetch_related("enrollments__group"))
     leds, months = build_ledgers(students), academic_months()
     rows = []

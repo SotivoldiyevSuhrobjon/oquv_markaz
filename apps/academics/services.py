@@ -8,7 +8,7 @@ from apps.core.exceptions import BusinessError
 from apps.core.models import Setting
 from apps.core.utils import today
 
-from .models import Attendance, Enrollment, Group, ParentContact, Room, Session, Student
+from .models import Attendance, Enrollment, Group, ParentContact, Room, Session, Student, SupportAttendance
 from .schedule import Slot
 
 
@@ -55,7 +55,7 @@ def unenroll(student: Student, group: Group) -> None:
 
 @transaction.atomic
 def archive_student(student: Student, status: str, reason: str = "", start: dt.date | None = None) -> Student:
-    if status not in {Student.Status.LEFT, Student.Status.PAUSED, Student.Status.LATER}:
+    if status not in {Student.Status.LEFT, Student.Status.PAUSED, Student.Status.LATER, Student.Status.REJECTED}:
         raise BusinessError("Noto'g'ri arxiv holati")
     if status == Student.Status.LATER and not start:
         raise BusinessError("'Keyin boshlaydi' uchun boshlanish sanasi kerak")
@@ -64,6 +64,17 @@ def archive_student(student: Student, status: str, reason: str = "", start: dt.d
     student.archived_at = timezone.now()
     student.save()
     return student
+
+
+def activate_due_students() -> int:
+    """'Keyin boshlaydi' o'quvchilar: boshlanish sanasi kelsa avtomatik faol bo'ladi (to'lov shu sanadan hisoblanadi)."""
+    due = Student.objects.filter(status=Student.Status.LATER, archive_start__isnull=False, archive_start__lte=today())
+    n = 0
+    for s in due:
+        s.started_on, s.status, s.archive_reason, s.archive_start, s.archived_at = s.archive_start, Student.Status.ACTIVE, "", None, None
+        s.save()
+        n += 1
+    return n
 
 
 def restore_student(student: Student, group: Group | None = None) -> Student:
@@ -89,10 +100,43 @@ def sheet(group: Group, date: dt.date) -> dict:
     counts = dict(
         Attendance.objects.filter(student__in=group_students(group), present=False).values_list("student_id").annotate(n=Count("id"))
     )
+    smarks = {r.student_id: r.present for r in session.support_records.all()} if session else {}
     rows = [
-        {"student": s.id, "name": s.full_name, "present": marks.get(s.id), "absences": counts.get(s.id, 0)} for s in group_students(group)
+        {
+            "student": s.id,
+            "name": s.full_name,
+            "present": marks.get(s.id),
+            "absences": counts.get(s.id, 0),
+            "support_present": smarks.get(s.id),
+        }
+        for s in group_students(group)
     ]
-    return {"group": group.id, "date": date, "finalized": bool(session and session.finalized), "students": rows}
+    return {
+        "group": group.id,
+        "date": date,
+        "finalized": bool(session and session.finalized),
+        "has_support": group.supports.exists(),
+        "supports": [str(u) for u in group.supports.all()],
+        "students": rows,
+    }
+
+
+@transaction.atomic
+def mark_support(group: Group, date: dt.date, records: list[dict], user) -> Session:
+    """Support darsi davomati. Asosiy davomat yakunlangan bo'lsa ham belgilanadi (support dars keyin bo'ladi)."""
+    if date > today():
+        raise BusinessError("Kelajak sanasiga davomat belgilab bo'lmaydi")
+    if not group.supports.exists():
+        raise BusinessError("Bu guruhga support biriktirilmagan")
+    session, _ = Session.objects.select_for_update().get_or_create(group=group, date=date)
+    valid = set(group_students(group).values_list("id", flat=True))
+    for r in records:
+        if r["student"] not in valid:
+            raise BusinessError("O'quvchi bu guruhda emas")
+        SupportAttendance.objects.update_or_create(
+            session=session, student_id=r["student"], defaults={"present": r["present"], "marked_by": user}
+        )
+    return session
 
 
 @transaction.atomic
@@ -134,8 +178,12 @@ def reopen(group: Group, date: dt.date) -> Session:
     return session
 
 
-def alerts(limit_absences: int = 3, groups=None):
-    """3 tadan ko'p dars qoldirgan va shundan keyin hali bog'lanilmagan o'quvchilar."""
+def alerts(limit_absences: int | None = None, groups=None):
+    """Sozlamadagi chegaradan (standart 3) ko'p dars qoldirgan va shundan keyin hali bog'lanilmagan o'quvchilar."""
+    if limit_absences is None:
+        from apps.core.models import Setting
+
+        limit_absences = Setting.get().alert_threshold
     qs = Student.objects.filter(status=Student.Status.ACTIVE)
     if groups is not None:
         qs = qs.filter(enrollments__group__in=groups, enrollments__left_on__isnull=True).distinct()

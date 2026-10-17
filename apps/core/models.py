@@ -10,6 +10,9 @@ class Setting(models.Model):
     default_price = models.PositiveIntegerField(default=600000, help_text="Fan biriktirilmagan o'quvchi uchun oylik narx")
     academic_start = models.CharField(max_length=7, default="2026-09", help_text="O'quv yili boshlanishi, YYYY-MM")
     academic_months = models.PositiveSmallIntegerField(default=10)
+    alert_threshold = models.PositiveSmallIntegerField(default=3, help_text="Shuncha darsdan ko'p qoldirsa ota-ona bilan bog'lanish kerak")
+    auto_next_month = models.BooleanField(default=True, help_text="Oy tugagach yangi oy avtomatik ochiladi")
+    auto_close_month = models.BooleanField(default=False, help_text="O'tgan oylar (davomati yakunlangan bo'lsa) avtomatik yopiladi")
 
     class Meta:
         verbose_name = "Sozlama"

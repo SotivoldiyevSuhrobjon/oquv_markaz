@@ -1,11 +1,11 @@
 /* ===== "Dastur haqida" bloki — boshqa dasturlarga ham ko'chirib ishlatiladi =====
    Faqat ABOUT ob'ektini o'zgartiring. tg — Telegram username (@siz), bo'sh bo'lsa tgId orqali ochiladi. */
 const ABOUT={
- name:"Olimpiya akademiyasi",
+ name:"Olimpiada akademiyasi",
  ver:"1.0",
  desc:"O'quv markaz uchun boshqaruv dasturi: guruhlar, davomat, to'lovlar, xonalar jadvali, xodimlar va hisobotlar bitta joyda.",
  feats:["Guruhlar va o'quvchilar bazasi","Davomat va 3 tadan ortiq qoldirganlar ogohlantirishi","Oylik to'lov, qarz, chegirma va kassa","Xona va dars vaqti jadvali (ustma-ust tushmaslik nazorati)","O'qituvchi oyligi va support xodimlar","Rollar: admin, administrator, bugalter, o'qituvchi"],
- author:"Suhrobjon",role:"Dasturchi",tg:"",tgId:"781462705",year:2026};
+ author:"Suhrobjon",role:"Dasturchi",tg:"user0601",tgId:"781462705",year:2026};
 (function(){
  const st=document.createElement('style');st.textContent=`.ab-b{display:flex;gap:12px;align-items:center;padding:12px;border:1px solid var(--bd);border-radius:14px;background:var(--card);text-decoration:none;color:inherit;transition:transform .2s,border-color .2s,box-shadow .2s}.ab-b:hover{transform:translateY(-2px);border-color:#229ed9;box-shadow:0 12px 26px -14px #229ed9}.ab-av{flex:none;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#2aabee,#229ed9);display:grid;place-items:center}.ab-av svg{width:22px;height:22px;fill:#fff;margin-right:2px}.ab-l{margin:8px 0 0;padding-left:18px}.ab-l li{margin:3px 0}`;document.head.appendChild(st);
  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

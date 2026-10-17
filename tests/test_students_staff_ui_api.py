@@ -82,3 +82,18 @@ def test_kids_order_is_per_group(kids, teacher, teacher2, admin, api):
 
 def test_make_user_helper_importable():
     assert callable(make_user)
+
+
+@pytest.mark.django_db
+def test_parent_phone_roundtrip_and_search(admin, api, group):
+    c = api(admin)
+    r = c.post(
+        "/api/students/",
+        {"full_name": "Sardor Rahimov", "phone": "+998901112233", "parent_phone": "+998935556677", "group": group.id},
+        format="json",
+    )
+    assert r.status_code == 201 and r.data["parent_phone"] == "+998935556677"
+    found = c.get("/api/students/?q=5556677").data["results"]
+    assert [x["full_name"] for x in found] == ["Sardor Rahimov"]
+    bad = c.post("/api/students/", {"full_name": "X Y", "parent_phone": "abc"}, format="json")
+    assert bad.status_code == 400

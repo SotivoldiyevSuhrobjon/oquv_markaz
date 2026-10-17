@@ -219,6 +219,10 @@ class StudentViewSet(AuditMixin, viewsets.ModelViewSet):
         return super().get_permissions()
 
     def get_queryset(self):
+        services.activate_due_students()
+        return self._queryset()
+
+    def _queryset(self):
         qs = Student.objects.prefetch_related("enrollments__group").annotate(
             absences=Count("attendance", filter=Q(attendance__present=False), distinct=True)
         )
@@ -232,7 +236,7 @@ class StudentViewSet(AuditMixin, viewsets.ModelViewSet):
             qs = qs.filter(enrollments__group_id=p["group"], enrollments__left_on__isnull=True)
         if p.get("q"):
             q = p["q"].strip()
-            qs = qs.filter(Q(full_name__icontains=q) | Q(phone__icontains=q))
+            qs = qs.filter(Q(full_name__icontains=q) | Q(phone__icontains=q) | Q(parent_phone__icontains=q))
         if p.get("subject"):
             qs = qs.filter(enrollments__group__subject__slug=p["subject"], enrollments__left_on__isnull=True)
         if p.get("nogroup") == "1":
@@ -290,6 +294,12 @@ def _can_mark(user, group) -> bool:
     return user.role == Role.TEACHER and group.group_teachers.filter(teacher=user).exists()
 
 
+def _can_mark_support(user, group) -> bool:
+    if is_manager(user):
+        return user.perm("att") >= 2
+    return user.role == Role.SUPPORT and group.supports.filter(pk=user.pk).exists()
+
+
 class AttendanceView(APIView):
     """GET sheet; POST mark / finalize / reopen. O'qituvchi faqat o'z guruhida, administrator att=2 bilan."""
 
@@ -311,6 +321,12 @@ class AttendanceView(APIView):
         s = MarkSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         g, d = s.validated_data["group"], s.validated_data["date"]
+        if op == "support":
+            if not _can_mark_support(request.user, g):
+                return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
+            services.mark_support(g, d, s.validated_data.get("records", []), request.user)
+            audit.log(request, "attendance.support", g, str(d))
+            return Response(services.sheet(g, d))
         if not _can_mark(request.user, g):
             return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
         if op == "mark":
@@ -328,16 +344,94 @@ class AttendanceView(APIView):
         return Response(services.sheet(g, d))
 
 
+def _alert_scope(request):
+    """(ruxsat bormi, guruhlar cheklovi). Menejer hammasini, o'qituvchi faqat o'z guruhlarini ko'radi."""
+    u = request.user
+    if is_manager(u):
+        return u.perm("att") >= 1, None
+    return True, my_groups(u)
+
+
+def _group_names(student, groups=None):
+    qs = Enrollment.objects.filter(student=student, left_on__isnull=True).select_related("group")
+    if groups is not None:
+        qs = qs.filter(group__in=groups)
+    return [e.group.name for e in qs]
+
+
 class AlertsView(APIView):
+    """3 tadan ko'p dars qoldirgan va bog'lanilmagan (yoki bog'lanilgandan keyin yana qoldirgan) o'quvchilar."""
+
     def get(self, request):
-        u = request.user
-        if is_manager(u):
-            if u.perm("att") < 1:
-                return Response(status=status.HTTP_403_FORBIDDEN)
-            students = services.alerts()
-        else:
-            students = services.alerts(groups=my_groups(u))
-        return Response([{"student": s.id, "name": s.full_name, "phone": s.phone, "absences": s.miss} for s in students])
+        allowed, groups = _alert_scope(request)
+        if not allowed:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        out = []
+        for s in services.alerts(groups=groups):
+            last = s.contacts.first()
+            out.append(
+                {
+                    "student": s.id,
+                    "name": s.full_name,
+                    "phone": s.phone,
+                    "parent_phone": s.parent_phone,
+                    "absences": s.miss,
+                    "groups": _group_names(s, groups),
+                    "last_note": last.note if last else "",
+                    "last_contact_at": last.created_at if last else None,
+                    "since_contact": (s.miss - last.missed_at_time) if last else None,
+                }
+            )
+        return Response(out)
 
 
-__all__ = ["SubjectViewSet", "RoomViewSet", "GroupViewSet", "StudentViewSet", "AttendanceView", "AlertsView", "mixins"]
+class ContactBoardView(APIView):
+    """Davomat sahifasi uchun: bugun kelmaganlar va so'nggi bog'lanishlar tarixi."""
+
+    def get(self, request):
+        from apps.core.utils import today
+
+        from .models import Attendance, ParentContact
+
+        allowed, groups = _alert_scope(request)
+        if not allowed:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        d = today()
+        qs = Attendance.objects.filter(session__date=d, present=False, student__status=Student.Status.ACTIVE).select_related(
+            "student", "session__group"
+        )
+        if groups is not None:
+            qs = qs.filter(session__group__in=groups)
+        contacted_today = set(ParentContact.objects.filter(created_at__date=d).values_list("student_id", flat=True))
+        absent = [
+            {
+                "student": a.student_id,
+                "name": a.student.full_name,
+                "phone": a.student.phone,
+                "parent_phone": a.student.parent_phone,
+                "group": a.session.group.name,
+                "absences": services.absences(a.student_id),
+            }
+            for a in qs
+            if a.student_id not in contacted_today
+        ]
+        hist = ParentContact.objects.select_related("student", "by").order_by("-created_at")
+        if groups is not None:
+            hist = hist.filter(student__enrollments__group__in=groups).distinct()
+        contacts = [
+            {
+                "id": c.id,
+                "student": c.student_id,
+                "name": c.student.full_name,
+                "groups": _group_names(c.student, groups),
+                "note": c.note,
+                "by": (c.by.full_name or c.by.username) if c.by else "",
+                "missed_at_time": c.missed_at_time,
+                "created_at": c.created_at,
+            }
+            for c in hist[:30]
+        ]
+        return Response({"absent_today": absent, "contacts": contacts})
+
+
+__all__ = ["SubjectViewSet", "RoomViewSet", "GroupViewSet", "StudentViewSet", "AttendanceView", "AlertsView", "ContactBoardView", "mixins"]

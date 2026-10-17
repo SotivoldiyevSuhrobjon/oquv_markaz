@@ -149,6 +149,7 @@ STORAGES = {
     },
 }
 # Demo frontend (frontend/index.html) "/" manzilda xizmat qilinadi
+BACKUP_DIR = Path(env("BACKUP_DIR", str(BASE_DIR / "data" / "backups")))
 WHITENOISE_ROOT = BASE_DIR / "frontend"
 WHITENOISE_INDEX_FILE = True
 WHITENOISE_ADD_HEADERS_FUNCTION = add_security_headers
@@ -166,7 +167,7 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
 }
-SPECTACULAR_SETTINGS = {"TITLE": "Olimpiya akademiyasi API", "VERSION": "1.0.0", "SERVE_INCLUDE_SCHEMA": False}
+SPECTACULAR_SETTINGS = {"TITLE": "Olimpiada akademiyasi API", "VERSION": "1.0.0", "SERVE_INCLUDE_SCHEMA": False}
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(env("JWT_ACCESS_MINUTES", "15"))),
