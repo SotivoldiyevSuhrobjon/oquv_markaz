@@ -100,7 +100,7 @@ def test_rejected_status_and_auto_activation(administrator, api):
     assert s.status == "active" and s.started_on == dt.date(2026, 10, 15) and s.archive_start is None
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)  # PostgreSQL: TRUNCATE (flush) test tranzaksiyasi ichida bajarilmaydi
 def test_backup_create_list_restore(admin, administrator, teacher, tmp_path, settings, api):
     from apps.academics.models import Student
 
