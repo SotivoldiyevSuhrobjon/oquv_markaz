@@ -12,6 +12,11 @@ def today() -> dt.date:
     return timezone.localdate()
 
 
+def now() -> dt.datetime:
+    """Hozirgi vaqt (Asia/Tashkent). Testlarda almashtiriladi."""
+    return timezone.localtime()
+
+
 def validate_month(value: str) -> str:
     if not MONTH_RE.match(value or ""):
         raise ValidationError("Oy YYYY-MM ko'rinishida bo'lishi kerak")

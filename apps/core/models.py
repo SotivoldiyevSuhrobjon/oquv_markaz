@@ -6,7 +6,10 @@ class Setting(models.Model):
     """Yagona (singleton) sozlamalar qatori."""
 
     max_group_size = models.PositiveSmallIntegerField(default=15)
-    default_rate = models.PositiveIntegerField(default=50000, help_text="1 o'quvchi / 1 dars kuni uchun stavka (so'm)")
+    default_rate = models.PositiveIntegerField(
+        default=75000,
+        help_text="1 soatlik dars uchun 1 o'quvchining oylik ulushi (so'm); 2 soatlik dars = 2 baravar. Oydagi darslar soniga bo'linadi, faqat kelgan darslar to'lanadi",
+    )
     default_price = models.PositiveIntegerField(default=600000, help_text="Fan biriktirilmagan o'quvchi uchun oylik narx")
     academic_start = models.CharField(max_length=7, default="2026-09", help_text="O'quv yili boshlanishi, YYYY-MM")
     academic_months = models.PositiveSmallIntegerField(default=10)

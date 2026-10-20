@@ -84,7 +84,7 @@ class GroupViewSet(AuditMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         u = self.request.user
-        if u.is_authenticated and u.role in (Role.TEACHER, Role.SUPPORT) and self.action in ("list", "retrieve"):
+        if u.is_authenticated and u.role in (Role.TEACHER, Role.SUPPORT) and self.action in ("list", "retrieve", "support_plan"):
             return [IsAuthenticated()]
         return super().get_permissions()
 
@@ -126,7 +126,11 @@ class GroupViewSet(AuditMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="support-plan")
     def support_plan(self, request):
         """Support soati (asosiy dars tugagach 1 soat) va dastur topgan bo'sh xona — har bir support bor guruh uchun."""
-        return Response(schedule.support_plan(services.all_slots(), services.rooms()))
+        plan = schedule.support_plan(services.all_slots(), services.rooms())
+        if request.user.role in (Role.TEACHER, Role.SUPPORT):  # o'qituvchi/support faqat o'z guruhlarini ko'radi
+            mine = set(my_groups(request.user).values_list("id", flat=True))
+            plan = [p for p in plan if p["group"] in mine]
+        return Response(plan)
 
     @action(detail=True, methods=["get"])
     def suggest(self, request, pk=None):
@@ -302,6 +306,14 @@ class StudentViewSet(AuditMixin, viewsets.ModelViewSet):
         return Response(ContactSerializer(s.contacts.all(), many=True).data)
 
 
+LOCK_MSG = "Dars vaqti tugagan — davomatni faqat admin o'zgartira oladi"
+
+
+def _locked(user, group, date, support=False) -> bool:
+    """Admin bo'lmaganlar uchun: faqat dars vaqti ichida (va shu kuni) belgilash/tahrirlash mumkin."""
+    return user.role != Role.ADMIN and not services.attendance_open(group, date, support)
+
+
 def _can_mark(user, group) -> bool:
     if is_manager(user):
         return user.perm("att") >= 2
@@ -312,6 +324,17 @@ def _can_mark_support(user, group) -> bool:
     if is_manager(user):
         return user.perm("att") >= 2
     return user.role == Role.SUPPORT and group.supports.filter(pk=user.pk).exists()
+
+
+def _sheet_for(user, group, date) -> dict:
+    """Varaq + shu foydalanuvchi hozir tahrirlay oladimi (dars vaqti oynasi)."""
+    data = services.sheet(group, date)
+    w = services.attendance_window(group, date)
+    data["can_edit"] = not _locked(user, group, date)
+    data["can_edit_support"] = not _locked(user, group, date, support=True)
+    data["window"] = None if not w or w[0] is None else f"{w[0]:%H:%M}–{w[1]:%H:%M}"
+    data["is_admin"] = user.role == Role.ADMIN
+    return data
 
 
 class AttendanceView(APIView):
@@ -329,7 +352,7 @@ class AttendanceView(APIView):
             d = dt.date.fromisoformat(request.query_params.get("date") or today().isoformat())
         except ValueError:
             raise BusinessError("Sana YYYY-MM-DD ko'rinishida bo'lsin") from None
-        return Response(services.sheet(g, d))
+        return Response(_sheet_for(request.user, g, d))
 
     def post(self, request, op):
         s = MarkSerializer(data=request.data)
@@ -338,11 +361,15 @@ class AttendanceView(APIView):
         if op == "support":
             if not _can_mark_support(request.user, g):
                 return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
+            if _locked(request.user, g, d, support=True):
+                return Response({"detail": LOCK_MSG}, status=status.HTTP_403_FORBIDDEN)
             services.mark_support(g, d, s.validated_data.get("records", []), request.user)
             audit.log(request, "attendance.support", g, str(d))
-            return Response(services.sheet(g, d))
+            return Response(_sheet_for(request.user, g, d))
         if not _can_mark(request.user, g):
             return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
+        if op in ("mark", "finalize") and _locked(request.user, g, d):
+            return Response({"detail": LOCK_MSG}, status=status.HTTP_403_FORBIDDEN)
         if op == "mark":
             recs = s.validated_data.get("records", [])
             if s.validated_data["all_present"]:
@@ -351,11 +378,11 @@ class AttendanceView(APIView):
         elif op == "finalize":
             services.finalize(g, d, request.user)
         elif op == "reopen":
-            if not is_manager(request.user):
-                return Response({"detail": "Faqat administrator qayta ocha oladi"}, status=status.HTTP_403_FORBIDDEN)
+            if request.user.role != Role.ADMIN:
+                return Response({"detail": "Faqat admin qayta ocha oladi"}, status=status.HTTP_403_FORBIDDEN)
             services.reopen(g, d)
         audit.log(request, f"attendance.{op}", g, str(d))
-        return Response(services.sheet(g, d))
+        return Response(_sheet_for(request.user, g, d))
 
 
 def _alert_scope(request):

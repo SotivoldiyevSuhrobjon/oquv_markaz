@@ -6,10 +6,11 @@ from django.utils import timezone
 
 from apps.core.exceptions import BusinessError
 from apps.core.models import Setting
+from apps.core.utils import now as now_local
 from apps.core.utils import today
 
 from .models import Attendance, Enrollment, Group, ParentContact, Room, Session, Student, SupportAttendance
-from .schedule import Slot
+from .schedule import WEEKDAYS, Slot
 
 
 def slot_of(g: Group) -> Slot:
@@ -202,3 +203,32 @@ def add_contact(student: Student, note: str, user) -> ParentContact:
     if not note:
         raise BusinessError("Ota-ona bilan gaplashgandan keyin izoh yozish majburiy")
     return ParentContact.objects.create(student=student, by=user, note=note, missed_at_time=absences(student.id))
+
+
+# ---- Davomat vaqt oynasi ----
+ATT_BEFORE_MIN = 10  # dars boshlanishidan oldin
+ATT_AFTER_MIN = 15  # dars tugagandan keyin (kechikib saqlash uchun)
+
+
+def attendance_window(group: Group, date: dt.date, support: bool = False):
+    """(boshlanish, tugash) — o'qituvchi davomatni shu oraliqda belgilay/tahrirlay oladi.
+    Jadval kiritilmagan guruhda None (cheklov yo'q). Support darsi asosiy dars tugagach 1 soat."""
+    if group.start_time is None or group.days not in WEEKDAYS:
+        return None
+    if date.weekday() not in WEEKDAYS[group.days]:
+        return (None, None)  # bu kun dars kuni emas
+    tz = timezone.get_current_timezone()
+    h = group.start_time.hour + (2 if support else 0)
+    start = dt.datetime.combine(date, dt.time(h, group.start_time.minute), tzinfo=tz)
+    end = start + dt.timedelta(hours=1 if support else 2)
+    return start - dt.timedelta(minutes=ATT_BEFORE_MIN), end + dt.timedelta(minutes=ATT_AFTER_MIN)
+
+
+def attendance_open(group: Group, date: dt.date, support: bool = False) -> bool:
+    """Hozir shu guruh/sana davomatini admin bo'lmagan xodim o'zgartira oladimi."""
+    w = attendance_window(group, date, support)
+    if w is None:
+        return True
+    if w[0] is None:
+        return False
+    return w[0] <= now_local() <= w[1]

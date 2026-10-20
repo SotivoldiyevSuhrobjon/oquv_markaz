@@ -193,7 +193,7 @@ const L = {
   async dash() {
     await Promise.all([subjects(), settings()]);
     const d = (S.d.dash = { groups: await list('/groups/'), alerts: await api('/alerts/').then((x) => x.results || x).catch(() => []) });
-    if (!isT()) { d.stats = await api('/groups/stats/'); await loadCf(); d.conflicts = S.cf; }
+    if (!isT()) { d.stats = await api('/groups/stats/'); await loadCf(); d.conflicts = S.cf; } else d.sp = await api('/groups/support-plan/').catch(() => []);
     S.d.sf = S.d.sf || 'all';
   },
   async att() {
@@ -267,14 +267,19 @@ async function loadSheet() {
 }
 
 /* ---------- chizish ---------- */
+/* Dizayn modellari: 1 = klassik (yuqori menyu), 2 = 3D yon menyu, 3 = kristal panel (chap tomonda 3D ikonkalar) */
+const UIN = ['Klassik', '3D yon menyu', 'Kristal panel'];
+const ICON = { dash: '🏠', att: '✅', pay: '💳', sal: '💼', room: '🚪', stf: '👥', stu: '🎓', new: '➕', arch: '🗄️', log: '📜', bak: '💾', set: '⚙️' };
+const uiGet = () => { const v = safe(() => localStorage.getItem('oqm_ui')); return ['1', '2', '3'].includes(v) ? v : '2'; };
 function render() {
   const hdr = document.querySelector('header'), app = $('#app');
+  S.ui = S.ui || uiGet(); document.body.className = `ui${S.ui}${S.me ? ' in' : ''}`;
   if (!S.me) {
     hdr.style.display = 'none'; app.className = 'full'; app.innerHTML = loginH(); $('#md').innerHTML = '';
     return;
   }
   hdr.style.display = ''; app.className = '';
-  $('#nav').innerHTML = tabs().map(([k, l]) => `<button class="tab ${S.view === k ? 'on' : ''}" data-a="tab" data-v="${k}">${esc(l)}</button>`).join('');
+  $('#nav').innerHTML = tabs().map(([k, l]) => `<button class="tab ${S.view === k ? 'on' : ''}" data-a="tab" data-v="${k}" title="${esc(l)}"><span class="ni" aria-hidden="true">${ICON[k] || '•'}</span><span class="nl">${esc(l)}</span></button>`).join('');
   $('#who').textContent = `${S.me.full_name || S.me.username} · ${ROLE[S.me.role]}`;
   const bl = $('#bell'); if (bl) { bl.style.display = S.me && (isT() || can('att') >= 1) ? '' : 'none'; $('#bn').textContent = S.bell || ''; bl.classList.toggle('on', !!S.bell); }
   const msg = S.adm ? `<div class="card" style="border-color:var(--mid);display:flex;gap:10px;align-items:center;margin-bottom:10px"><span style="flex:1">👁 Siz <b>${esc(S.me.full_name || S.me.username)}</b> (${ROLE[S.me.role]}) nomidan ko‘ryapsiz. Faqat ko‘rish uchun — o‘zgarishlar shu xodim nomidan yoziladi.</span><button class="btn pri" data-a="unimp">Admin sifatida qaytish</button></div>` : '';
@@ -327,6 +332,34 @@ function calcCard(p) {
   const subs = (S.subj || []).filter((x) => x.is_active !== false);
   return `<details class="card" style="margin:10px 0" ${c.open ? 'open' : ''}><summary><b>🧮 To‘lov kalkulyatori</b> <span class="mu">— qaysi kundan boshlasa, shunga qarab</span></summary><div class="row"><label class="mu">Boshlash sanasi<br><input type="date" data-a="cc" data-v="from" value="${esc(c.from)}" min="${p.month}-01" max="${p.month}-31"></label><label class="mu">Kunlar<br><select data-a="cc" data-v="days"><option value="DCJ" ${c.days === 'DCJ' ? 'selected' : ''}>Du-Chor-Ju</option><option value="SPSh" ${c.days === 'SPSh' ? 'selected' : ''}>Se-Pay-Sha</option></select></label><label class="mu">Chegirma (so‘m)<br><input type="number" min="0" step="10000" style="width:120px" data-a="cc" data-v="disc" value="${c.disc || 0}"></label></div><div class="row">${subs.map((x) => `<label class="chip"><input type="checkbox" data-a="cc" data-v="sub:${x.id}" ${c.subs.includes(x.id) ? 'checked' : ''}> ${esc(x.name)} · ${money(x.price)}</label>`).join('')}</div>${r ? `<div>Oyda <b>${r.lessons_total}</b> ta dars, qolgan: <b>${r.lessons_left}</b> ta → to‘lov: <b class="st2" style="font-size:20px">${money(r.amount)}</b> <span class="mu">(to‘liq: ${money(r.full)})</span></div>` : '<div class="mu">Hisoblab bo‘lmadi</div>'}</details>`;
 }
+/* O'qituvchi/support o'z jadvali: qaysi kuni, soat nechada, qaysi xonada */
+const WD_NAMES = { DCJ: 'Dushanba · Chorshanba · Juma', SPSh: 'Seshanba · Payshanba · Shanba' };
+function myItems(groups, sp) {
+  const me = S.me.id, out = [], p2 = (h) => `${String(h).padStart(2, '0')}:00`;
+  groups.filter((g) => g.days && g.start_time).forEach((g) => {
+    const x = slotOf(g), i = x.teachers.indexOf(me);
+    if (S.me.role === 'teacher' && i >= 0) {
+      const w = twin(x, i), kids = isKidsG(g), sub = kids ? ((g.teachers.find((t) => t.id === me) || {}).position === 0 ? 'English' : 'Math') : '';
+      out.push({ days: g.days, from: w[0], to: w[1], name: g.name, room: g.room, kind: 'main', note: kids ? `${sub} · ${p2(w[0])}–${p2(w[1])}` : 'Asosiy dars', n: g.student_count });
+    }
+    if (g.supports.some((y) => y.id === me)) {
+      const pl = (sp || []).find((q) => q.group === g.id), h = x.hour + 2;
+      out.push({ days: g.days, from: h, to: h + 1, name: g.name, room: pl ? pl.room : '', kind: 'sup', note: 'Support darsi', n: g.student_count });
+    }
+  });
+  return out.sort((a, b) => a.from - b.from || a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+function mySched(d) {
+  const items = myItems(d.groups, d.sp), p2 = (h) => `${String(h).padStart(2, '0')}:00`, view = S.d.tsv || 'today';
+  const wd = new Date().getDay(), tdays = [1, 3, 5].includes(wd) ? 'DCJ' : [2, 4, 6].includes(wd) ? 'SPSh' : '', nowH = new Date().getHours();
+  const item = (it, hl) => `<a href="#" class="card sched ${it.kind === 'sup' ? 'sup' : ''} ${hl && nowH >= it.from && nowH < it.to ? 'now' : ''}" data-a="grp" data-v="${(d.groups.find((g) => g.name === it.name) || {}).id}"><b class="tm">${p2(it.from)}–${p2(it.to)}</b><span class="sn"><b>${esc(it.name)}</b><span class="mu">${esc(it.note)} · ${it.n} o‘quvchi</span></span><span class="rm">${it.room ? 'Xona ' + esc(it.room) : '<span class="mu">xona yo‘q</span>'}</span></a>`;
+  const col = (k, hl) => { const l = items.filter((x) => x.days === k); return `<div><div class="mu" style="margin:6px 0">${WD_NAMES[k]}</div>${l.map((x) => item(x, hl)).join('') || '<p class="mu">Dars yo‘q</p>'}</div>`; };
+  const tabsH = `<div class="row" style="margin:0 0 6px"><button class="chip ${view === 'today' ? 'on' : ''}" data-a="tsv" data-v="today">Bugun</button><button class="chip ${view === 'week' ? 'on' : ''}" data-a="tsv" data-v="week">Haftalik</button></div>`;
+  const body = view === 'today'
+    ? (tdays ? col(tdays, true) : '<p class="mu">Bugun dam olish kuni — dars yo‘q.</p>')
+    : `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">${col('DCJ', tdays === 'DCJ')}${col('SPSh', tdays === 'SPSh')}</div>`;
+  return `<h2>🗓 Mening jadvalim</h2>${tabsH}${items.length ? body : '<p class="mu">Sizga hali dars jadvali biriktirilmagan.</p>'}`;
+}
 const V = {
   dash() {
     const d = S.d.dash; if (!d) return '';
@@ -347,13 +380,13 @@ const V = {
       <div class="mu">${teachersHtml(g)}</div>
       <div class="mu">${g.room ? 'Xona ' + esc(g.room) : 'Xona yo‘q'} · ${DN[g.days] || '—'} · ${timeOf(g)}</div>
       <div class="bar"><i class="${bc}" style="width:${Math.min(100, (g.student_count / max) * 100)}%"></i></div><div class="fl"><b class="${tc}">${g.student_count}/${max}</b> · <span class="${tc}">${tl}</span></div></div>`; }).join('');
-    return `${tot}${bars}${stats}${conf}${al}<h2>${isT() ? 'Guruhlarim' : 'Guruhlar'}</h2>${chips}<div class="grid">${cards || '<p class="mu">Hozircha guruh yo‘q. ' + (can('new') ? '"Yangi" bo‘limidan qo‘shing.' : '') + '</p>'}</div>`;
+    return `${tot}${bars}${stats}${conf}${al}${isT() ? mySched(d) : ''}<h2>${isT() ? 'Guruhlarim' : 'Guruhlar'}</h2>${chips}<div class="grid">${cards || '<p class="mu">Hozircha guruh yo‘q. ' + (can('new') ? '"Yangi" bo‘limidan qo‘shing.' : '') + '</p>'}</div>`;
   },
 
   att() {
     const a = S.d.att; if (!a) return '';
-    const canMark = S.me.role === 'teacher' || can('att') >= 2;
-    const sh = a.sheet, canSup = S.me.role === 'support' || (S.me.role !== 'teacher' && can('att') >= 2);
+    const sh = a.sheet, locked = !!(sh && sh.can_edit === false), supLocked = !!(sh && sh.can_edit_support === false);
+    const canMark = (S.me.role === 'teacher' || can('att') >= 2) && !locked, canSup = (S.me.role === 'support' || (S.me.role !== 'teacher' && can('att') >= 2)) && !supLocked;
     let body = '<p class="mu">Guruhni tanlang.</p>';
     if (sh) {
       const rows = sh.students.map((s) => {
@@ -362,10 +395,11 @@ const V = {
         return `<tr><td>${esc(s.name)}</td><td class="num">${s.absences ? `<span class="tag" style="color:var(--lo)">${s.absences} qoldirgan</span>` : '—'}</td>
         <td><button class="chip ${m === true ? 'on' : ''}" ${dis} data-a="mk" data-v="${s.student}:1">Keldi</button> <button class="chip ${m === false ? 'on' : ''}" style="${m === false ? 'background:var(--lo);border-color:var(--lo)' : ''}" ${dis} data-a="mk" data-v="${s.student}:0">Kelmadi</button></td>${sh.has_support ? `<td><button class="chip ${sm === true ? 'on' : ''}" ${canSup ? '' : 'disabled'} data-a="smk" data-v="${s.student}:1">Keldi</button> <button class="chip ${sm === false ? 'on' : ''}" style="${sm === false ? 'background:var(--lo);border-color:var(--lo)' : ''}" ${canSup ? '' : 'disabled'} data-a="smk" data-v="${s.student}:0">Kelmadi</button></td>` : ''}</tr>`;
       }).join('');
-      body = `<div class="row"><b>${sh.finalized ? '🔒 Yakunlangan' : 'Ochiq'}</b>${canMark && !sh.finalized ? '<button class="chip" data-a="allpres">Hammasi keldi</button><button class="btn pri" data-a="savemk">Saqlash</button><button class="btn" data-a="finmk">Yakunlash</button>' : ''}${sh.finalized && (isAdmin() || can('att') >= 2) ? '<button class="btn" data-a="reopenmk">Qayta ochish</button>' : ''}</div>
+      const lockMsg = locked ? `<div class="card" style="border-color:var(--mid);margin:0 0 8px">🔒 Dars vaqti tugagan${sh.window ? ` (davomat ${sh.window} oralig‘ida belgilanadi)` : ''}. Endi davomatni faqat <b>admin</b> o‘zgartira oladi.</div>` : sh.window && !sh.is_admin && !sh.finalized ? `<div class="mu" style="margin:0 0 6px">⏱ Davomatni ${sh.window} oralig‘ida belgilash va tahrirlash mumkin.</div>` : '';
+      body = `${lockMsg}<div class="row"><b>${sh.finalized ? '🔒 Yakunlangan' : 'Ochiq'}</b>${canMark && !sh.finalized ? '<button class="chip" data-a="allpres">Hammasi keldi</button><button class="btn pri" data-a="savemk">Saqlash</button><button class="btn" data-a="finmk">Yakunlash</button>' : ''}${sh.finalized && sh.is_admin ? '<button class="btn" data-a="reopenmk">Qayta ochish</button>' : ''}</div>
       <div class="wrap"><table><tr><th>O'quvchi</th><th>Qoldirgan</th><th>Dars davomati</th>${sh.has_support ? `<th>Support darsi <span class="mu">(${esc((sh.supports || []).join(', '))})</span></th>` : ''}</tr>${rows || '<tr><td colspan="4" class="mu">Guruhda o‘quvchi yo‘q</td></tr>'}</table></div>
       ${sh.has_support && canSup ? '<div class="row"><b>Support darsi:</b><button class="chip" data-a="allsup">Hammasi keldi</button><button class="btn pri" data-a="savesup">Support davomatini saqlash</button></div>' : ''}
-      <div class="demo">Yakunlangan davomat o'qituvchi oyligiga hisoblanadi va o'zgartirilmaydi.${sh.has_support ? ' Support darsiga kelmaslik “3 tadan ko‘p dars qoldirdi” hisobiga qo‘shilmaydi, support oyligi esa belgilangan summa (o‘quvchi soniga bog‘liq emas).' : ''}</div>`;
+      <div class="demo">Yakunlangan davomat o'qituvchi oyligiga hisoblanadi. Dars vaqti o‘tgach faqat admin o‘zgartira oladi.${sh.has_support ? ' Support darsiga kelmaslik “3 tadan ko‘p dars qoldirdi” hisobiga qo‘shilmaydi, support oyligi esa belgilangan summa (o‘quvchi soniga bog‘liq emas).' : ''}</div>`;
     }
     const canCt = S.me.role !== 'teacher' && can('att') >= 2;
     const phones = (s) => `<div class="row" style="margin:4px 0"><span>📞 O‘quvchi: ${s.phone ? `<a href="tel:${esc(s.phone)}"><b>${esc(s.phone)}</b></a>` : '<span class="st0">kiritilmagan</span>'}</span><span>👪 Ota-ona: ${s.parent_phone ? `<a href="tel:${esc(s.parent_phone)}"><b>${esc(s.parent_phone)}</b></a>` : '<span class="st0">kiritilmagan</span>'}</span></div>`;
@@ -373,7 +407,7 @@ const V = {
     const alerts = a.alerts.length ? `<h2>🔴 ${S.set ? S.set.alert_threshold : 3} tadan ko‘p dars qoldirganlar (${a.alerts.length})</h2>${a.alerts.map((s) => `<div class="card" style="margin:6px 0;border-color:var(--lo)"><b>${esc(s.name)}</b> <span class="mu">${esc((s.groups || []).join(', '))}</span> · <b class="st0">${s.absences} dars qoldirgan</b>${s.last_note ? `<div class="mu">Oxirgi bog‘lanish: ${new Date(s.last_contact_at).toLocaleDateString('uz-UZ')} — “${esc(s.last_note)}”. Shundan keyin yana <b>${s.since_contact}</b> dars qoldirdi.</div>` : ''}${phones(s)}${ctForm(s)}</div>`).join('')}` : '';
     const absent = (a.absent || []).length ? `<h2>📞 Bugun kelmaganlar (${a.absent.length})</h2>${a.absent.map((s) => `<div class="card" style="margin:6px 0"><b>${esc(s.name)}</b> <span class="mu">${esc(s.group)}</span> · <span class="mu">jami ${s.absences} dars qoldirgan</span>${phones(s)}${ctForm(s)}</div>`).join('')}` : '';
     const hist = (a.contacts || []).length ? `<details style="margin-top:10px"><summary class="mu">Bog‘lanilganlar (${a.contacts.length})</summary>${a.contacts.map((c) => `<div class="card" style="margin:6px 0"><b>${esc(c.name)}</b> <span class="mu">${esc((c.groups || []).join(', '))} · ${new Date(c.created_at).toLocaleString('uz-UZ')} · ${esc(c.by)} · ${c.missed_at_time} dars qoldirgan</span><div>📝 ${esc(c.note)}</div></div>`).join('')}</details>` : '';
-    return `<div class="card"><div class="row" style="margin:0"><select data-a="attg"><option value="">Guruh…</option>${a.groups.map((g) => opt(g.id, `${g.name} · ${timeOf(g)}`, a.group)).join('')}</select><input type="date" data-a="attd" value="${a.date}" max="${today()}"></div></div>${alerts}${absent}<div style="margin-top:10px">${body}</div>${hist}`;
+    return `<div class="row" style="margin:0 0 8px"><label class="mu">Sana <input type="date" data-a="attd" value="${a.date}" max="${today()}"></label></div><div class="grid gcards">${a.groups.slice().sort((x, y) => (x.days || '').localeCompare(y.days || '') || (x.start_time || '').localeCompare(y.start_time || '') || x.name.localeCompare(y.name, undefined, { numeric: true })).map((g) => `<button class="card gcard ${String(a.group) === String(g.id) ? 'on' : ''}" data-a="attc" data-v="${g.id}"><b>${esc(g.name)}</b><span class="mu">${g.days ? DN[g.days] : '—'} · ${timeOf(g)}${g.room ? ' · xona ' + esc(g.room) : ''}</span><span class="mu">${g.student_count} o‘quvchi</span></button>`).join('') || '<p class="mu">Sizga guruh biriktirilmagan.</p>'}</div>${alerts}${absent}<div style="margin-top:10px">${body}</div>${hist}`;
   },
 
   pay() {
@@ -408,11 +442,11 @@ const V = {
     const mo = `<div class="row"><select data-a="salm">${months().map((m) => opt(m, mname(m), s.month)).join('')}</select></div>`;
     if (isT()) {
       const r = s.me;
-      return `${mo}<div class="card" style="max-width:420px"><h2 style="margin-top:0">${mname(s.month)}</h2>${r.rate !== null && r.rate !== undefined ? `<div>O'quvchi-kun: <b>${Math.round((r.student_days || 0) * 10) / 10}</b> × ${money(r.rate)}</div>` : ''}<div>Hisoblangan: <b>${money(r.accrued)}</b></div><div>To'langan: <b>${money(r.paid)}</b></div><div>Qolgan: <b>${money(r.left)}</b></div><div class="demo">Faqat yakunlangan darslar hisoblanadi.</div></div>`;
+      return `${mo}<div class="card" style="max-width:420px"><h2 style="margin-top:0">${mname(s.month)}</h2>${r.rate !== null && r.rate !== undefined ? `<div>Kelgan o‘quvchi-darslar: <b>${Math.round((r.student_days || 0) * 10) / 10}</b> · 1 soatlik dars ulushi: ${money(r.rate)} / oydagi darslar soni</div>` : ''}<div>Hisoblangan: <b>${money(r.accrued)}</b></div><div>To'langan: <b>${money(r.paid)}</b></div><div>Qolgan: <b>${money(r.left)}</b></div><div class="demo">Faqat yakunlangan darslar hisoblanadi.</div></div>`;
     }
     const ed = can('sal') >= 2;
-    const gr = isAdmin() ? `<form class="card row" data-f="genrate" style="margin:0 0 10px"><label style="flex:1;min-width:220px"><b>Umumiy stavka</b> <span class="mu">— 1 o‘quvchi / 1 dars kuni (shaxsiy stavkasi yo‘q o‘qituvchilar uchun)</span><input type="number" name="rate" min="0" step="1000" value="${S.set ? S.set.default_rate : 0}" required></label><button class="btn pri">Saqlash</button></form>` : '';
-    return `${mo}${gr}<div class="wrap"><table><tr><th>Xodim</th><th>Lavozim</th><th>O'quvchi-kun</th><th>Stavka</th><th>Hisoblangan</th><th>To'langan</th><th>Qolgan</th><th></th></tr>${s.rows.map((r) => `<tr class="rw" data-a="salv" data-v="${r.staff}"><td><b>${esc(r.name)}</b></td><td>${r.role === 'support' ? 'Support' : "O'qituvchi"}</td><td class="num">${r.student_days === null ? '—' : Math.round(r.student_days * 10) / 10}</td><td class="num">${r.rate === null ? '—' : money(r.rate)}</td><td class="num">${money(r.accrued)}</td><td class="num">${money(r.paid)}</td><td class="num ${r.left ? 'st0' : ''}">${money(r.left)}</td><td>${ed && r.left > 0 ? `<button class="chip" data-a="paysal" data-v="${r.staff}">To'lash</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="mu">Xodim yo‘q</td></tr>'}</table></div><div class="demo">Xodim qatorini bossangiz, u haqidagi ma'lumot ochiladi va oylik/stavkani shu yerning o'zida o'zgartirish mumkin.</div>`;
+    const gr = isAdmin() ? `<form class="card row" data-f="genrate" style="margin:0 0 10px"><label style="flex:1;min-width:220px"><b>Umumiy ulush</b> <span class="mu">— 1 soatlik dars uchun 1 o‘quvchi/oyiga (standart 75 000; 2 soatlik dars = 150 000). Oydagi darslar soniga (12–13) bo‘linadi, faqat kelgan darslar to‘lanadi</span><input type="number" name="rate" min="0" step="1000" value="${S.set ? S.set.default_rate : 0}" required></label><button class="btn pri">Saqlash</button></form>` : '';
+    return `${mo}${gr}<div class="wrap"><table><tr><th>Xodim</th><th>Lavozim</th><th>Kelgan darslar</th><th>1 soat ulushi</th><th>Hisoblangan</th><th>To'langan</th><th>Qolgan</th><th></th></tr>${s.rows.map((r) => `<tr class="rw" data-a="salv" data-v="${r.staff}"><td><b>${esc(r.name)}</b></td><td>${r.role === 'support' ? 'Support' : "O'qituvchi"}</td><td class="num">${r.student_days === null ? '—' : Math.round(r.student_days * 10) / 10}</td><td class="num">${r.rate === null ? '—' : money(r.rate)}</td><td class="num">${money(r.accrued)}</td><td class="num">${money(r.paid)}</td><td class="num ${r.left ? 'st0' : ''}">${money(r.left)}</td><td>${ed && r.left > 0 ? `<button class="chip" data-a="paysal" data-v="${r.staff}">To'lash</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="mu">Xodim yo‘q</td></tr>'}</table></div><div class="demo">Xodim qatorini bossangiz, u haqidagi ma'lumot ochiladi va oylik/stavkani shu yerning o'zida o'zgartirish mumkin.</div>`;
   },
 
   room() {
@@ -494,7 +528,7 @@ const V = {
     const form = ed ? `<form class="card fg" data-f="addstaff" style="margin-bottom:10px"><label>Lavozim<select name="role" data-a="rolesel"><option value="teacher">O'qituvchi</option><option value="support">Support teacher</option>${isAdmin() ? '<option value="administrator">O‘quv markaz administratori</option><option value="bugalter">Bugalter</option>' : ''}</select></label>
     <label>F.I.Sh<input name="full_name" required></label><label>Login<input name="username" autocapitalize="none" required></label>
     <label>Yo'nalish<select name="category"><option value="">—</option>${subjOpts('')}</select></label><label>Telefon<input name="phone" type="tel"></label><label>Tuman<input name="district" list="tmn"></label><label>Ishga kirgan<input name="work_from" type="date" value="${today()}"></label><label style="grid-column:1/-1">Tavsif (tajriba, izoh — ixtiyoriy)<textarea name="description" rows="2" maxlength="2000"></textarea></label>
-    ${can('sal') >= 2 ? `<label>Stavka (1 o'quvchi/1 dars) yoki oylik<input name="pay" type="number" step="1000" min="0"></label>` : ''}
+    ${can('sal') >= 2 ? `<label>Ulush (1 soatlik dars, 1 o'quvchi/oyiga) yoki support oyligi<input name="pay" type="number" step="1000" min="0"></label>` : ''}
     ${pwField('password', 'Parol (kamida 8 belgi, katta-kichik harf, raqam)')}<button type="button" class="chip" data-a="genpw">🔑 Parol yaratish</button><button class="btn pri">＋ Qo'shish</button></form>` : '';
     const sq = (s.q || '').toLowerCase();
     const rows = s.staff.filter((u) => (!s.rf || u.role === s.rf) && (!s.cat || u.category === s.cat) && (!sq || [u.full_name, u.username, u.phone].some((x) => (x || '').toLowerCase().includes(sq)))).map((u) => `<tr class="rw" data-a="stview" data-v="${u.id}"><td><b>${esc(u.full_name || u.username)}</b>${u.archived_at ? ' <span class="tag">arxiv</span>' : ''}</td><td>${esc(u.username)}</td><td>${ROLE[u.role]}</td><td>${esc(u.category || '—')}</td><td>${esc(u.phone || '—')}</td>${sal ? `<td class="num">${u.role === 'support' ? money(u.monthly_salary) + '/oy' : u.rate ? money(u.rate) : 'umumiy'}</td>` : ''}<td>${ed ? `<button class="chip" data-a="stedit" data-v="${u.id}">Tahrirlash</button> ${isAdmin() && u.role !== 'admin' && !u.archived_at ? `<button class="chip" data-a="stnewpw" data-v="${u.id}" title="Yangi parol yaratish">🔑</button><button class="chip" data-a="imp" data-v="${u.id}" title="Shu xodim nomidan ko‘rish">👁</button> ` : ''}${isAdmin() && u.role !== 'admin' ? `<button class="chip" data-a="stperm" data-v="${u.id}">🔐 Ruxsatlar</button> ` : ''}${u.archived_at ? `<button class="chip" data-a="strest" data-v="${u.id}">Qaytarish</button>` : u.id !== S.me.id ? `<button class="chip" data-a="starch" data-v="${u.id}">Arxivlash</button>` : ''}` : ''}</td></tr>`).join('');
@@ -550,14 +584,16 @@ const V = {
     if (st.tab === 'perm') {
       const accs = (st.staff || []).filter((u) => u.role === 'administrator' || u.role === 'bugalter');
       const LV = [['0', "Yo'q"], ['1', "Ko'rish"], ['2', "O'zgartirish"]];
-      const rows = accs.map((u) => `<form class="card" data-f="permsave" data-id="${u.id}" style="margin:8px 0"><div class="row" style="margin:0"><b style="flex:1">${esc(u.full_name || u.username)} <span class="tag">${ROLE[u.role]}</span> <span class="mu">${esc(u.username)}</span>${u.is_active ? '' : ' <span class="tag">arxiv</span>'}</b></div>
+      const isArc = (u) => !u.is_active || !!u.archived_at;
+      const mkRow = (u) => `<form class="card" data-f="permsave" data-id="${u.id}" style="margin:8px 0"><div class="row" style="margin:0"><b style="flex:1">${esc(u.full_name || u.username)} <span class="tag">${ROLE[u.role]}</span> <span class="mu">${esc(u.username)}</span>${u.is_active ? '' : ' <span class="tag">arxiv</span>'}</b></div>
         <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-top:8px">${SECS.map(([k, l]) => `<label class="mu">${l}<select name="perm_${k}" style="width:100%">${LV.map(([v, t]) => opt(v, t, u.perms && k in u.perms ? u.perms[k] : (DEFP[u.role] || {})[k] ?? 0)).join('')}</select></label>`).join('')}</div>
-        <div class="row">${pwField('password', 'Yangi parol (ixtiyoriy)')}<button type="button" class="chip" data-a="genpw">🔑</button><button class="btn pri">Saqlash</button>${u.is_active ? `<button type="button" class="chip" data-a="starch2" data-v="${u.id}">Arxivlash</button>` : `<button type="button" class="chip" data-a="strest2" data-v="${u.id}">Qaytarish</button>`}</div></form>`).join('');
+        <div class="row">${pwField('password', 'Yangi parol (ixtiyoriy)')}<button type="button" class="chip" data-a="genpw">🔑</button><button class="btn pri">Saqlash</button>${u.is_active ? `<button type="button" class="chip" data-a="starch2" data-v="${u.id}">Arxivlash</button>` : `<button type="button" class="chip" data-a="strest2" data-v="${u.id}">Qaytarish</button>`}</div></form>`;
+      const arcL = accs.filter(isArc), rows = accs.filter((u) => !isArc(u)).map(mkRow).join('') + (arcL.length ? `<details class="card" style="margin:10px 0"><summary><b>🗄 Arxivdagi akkauntlar (${arcL.length})</b> <span class="mu">— tizimga kira olmaydi, asosiy ro‘yxatda ko‘rinmaydi</span></summary>${arcL.map(mkRow).join('')}</details>` : '');
       return `${head}<p class="mu">Har bir boshqaruv akkaunti uchun qaysi bo'limni <b>ko'rishi</b> va qaysi bo'limni <b>o'zgartirishi</b> mumkinligini belgilang. Tarix va Sozlamalar faqat adminga. O'qituvchilar qat'iy qoidada: faqat o'z guruhlari, davomat va o'z oyligi.</p>${rows || '<p class="mu">Hozircha administrator/bugalter akkaunti yo‘q. Quyida yarating.</p>'}
       <form class="card fg" data-f="addstaff" style="margin-top:10px"><h2 style="grid-column:1/-1;margin:0">＋ Yangi boshqaruv akkaunti</h2><label>Lavozim<select name="role"><option value="administrator">O'quv markaz administratori</option><option value="bugalter">Bugalter</option></select></label><label>F.I.Sh<input name="full_name" required></label><label>Login<input name="username" autocapitalize="none" required></label>${pwField('password', 'Parol')}<button type="button" class="chip" data-a="genpw">🔑 Parol yaratish</button><button class="btn pri">＋ Yaratish</button><div class="mu" style="grid-column:1/-1">Standart ruxsatlar lavozimga qarab qo'yiladi, keyin yuqoridan o'zgartirasiz.</div></form>`;
     }
     const s = S.set;
-    return `${head}<form class="card fg" data-f="setsave"><h2 style="grid-column:1/-1;margin:0">Umumiy sozlamalar</h2><label>Guruhdagi maksimum o'quvchi<input type="number" name="max_group_size" min="1" max="60" value="${s.max_group_size}"></label><label>Standart stavka (1 o'quvchi/1 dars), so'm<input type="number" name="default_rate" min="0" step="1000" value="${s.default_rate}"></label><label>Guruhsiz o'quvchi oylik narxi<input type="number" name="default_price" min="0" step="1000" value="${s.default_price}"></label><label>O'quv yili boshlanishi (YYYY-MM)<input name="academic_start" pattern="\\d{4}-\\d{2}" value="${esc(s.academic_start)}"></label><label>Oylar soni<input type="number" name="academic_months" min="1" max="24" value="${s.academic_months}"></label>
+    return `${head}<form class="card fg" data-f="setsave"><h2 style="grid-column:1/-1;margin:0">Umumiy sozlamalar</h2><label>Guruhdagi maksimum o'quvchi<input type="number" name="max_group_size" min="1" max="60" value="${s.max_group_size}"></label><label>Standart ulush (1 soatlik dars, 1 o'quvchi/oyiga), so'm<input type="number" name="default_rate" min="0" step="1000" value="${s.default_rate}"></label><label>Guruhsiz o'quvchi oylik narxi<input type="number" name="default_price" min="0" step="1000" value="${s.default_price}"></label><label>O'quv yili boshlanishi (YYYY-MM)<input name="academic_start" pattern="\\d{4}-\\d{2}" value="${esc(s.academic_start)}"></label><label>Oylar soni<input type="number" name="academic_months" min="1" max="24" value="${s.academic_months}"></label>
       <h2 style="grid-column:1/-1;margin:10px 0 0">Davomat va oylar</h2><label>Necha darsdan ko‘p qoldirsa ota-ona bilan bog‘lanish kerak<input type="number" name="alert_threshold" min="1" max="30" value="${s.alert_threshold}"></label>
       <label class="chip" style="align-self:end"><input type="checkbox" name="auto_next_month" ${s.auto_next_month ? 'checked' : ''}> Oy tugasa yangi oy avtomatik ochilsin</label><label class="chip" style="align-self:end"><input type="checkbox" name="auto_close_month" ${s.auto_close_month ? 'checked' : ''}> O‘tgan oylar (davomati yakunlangan bo‘lsa) avtomatik yopilsin</label><button class="btn pri">Saqlash</button></form>`;
   },
@@ -642,9 +678,10 @@ function salaryModal(m, shell) {
   const d = m.d, s = d.salary, ed = can('sal') >= 2, sup = d.role === 'support', subj = (S.subj || []).find((x) => x.slug === d.category);
   const line = (k, v) => `<div><span class="mu">${k}</span><div>${v}</div></div>`;
   const grs = d.groups.map((g) => `<div class="row" style="margin:2px 0"><b>${esc(g.name)}</b><span class="mu">${g.room ? 'Xona ' + esc(g.room) + ' · ' : ''}${DN[g.days] || '—'} · ${timeOf(g)} · ${g.student_count} o'quvchi</span></div>`).join('');
-  const form = ed ? `<form data-f="salsave" data-id="${d.id}" class="row"><label style="flex:1;min-width:200px">${sup ? 'Oylik maosh (so‘m)' : `Stavka — 1 o‘quvchi/1 dars (bo‘sh = umumiy ${money(d.default_rate)})`}<input type="number" name="value" step="1000" min="0" value="${(sup ? d.monthly_salary : d.rate) ?? ''}" ${sup ? 'required' : ''}></label><button class="btn pri">Saqlash</button>${s.left > 0 ? `<button type="button" class="btn" data-a="salpay" data-v="${d.id}">To‘lash (${money(s.left)})</button>` : ''}</form>` : '';
+  const form = ed ? `<form data-f="salsave" data-id="${d.id}" class="row"><label style="flex:1;min-width:200px">${sup ? 'Oylik maosh (so‘m)' : `Ulush — 1 soatlik dars, 1 o‘quvchi/oyiga (bo‘sh = umumiy ${money(d.default_rate)})`}<input type="number" name="value" step="1000" min="0" value="${(sup ? d.monthly_salary : d.rate) ?? ''}" ${sup ? 'required' : ''}></label><button class="btn pri">Saqlash</button>${s.left > 0 ? `<button type="button" class="btn" data-a="salpay" data-v="${d.id}">To‘lash (${money(s.left)})</button>` : ''}</form>` : '';
   return shell(esc(d.name), `<div class="row"><span class="tag">${ROLE[d.role]}</span>${subj ? `<span class="tag">${esc(subj.name)}</span>` : ''}<span class="mu">${mname(m.month)}</span></div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">${sup ? '' : line("O'quvchi-kun", Math.round((s.student_days || 0) * 10) / 10)}${sup ? '' : line('Stavka', money(s.rate))}${line('Hisoblangan', `<b>${money(s.accrued)}</b>`)}${line("To'langan", money(s.paid))}${line('Qolgan', `<b class="${s.left ? 'st0' : 'st2'}">${money(s.left)}</b>`)}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">${sup ? '' : line('Kelgan darslar', Math.round((s.student_days || 0) * 10) / 10)}${sup ? '' : line('1 soat ulushi', money(s.rate))}${line('Hisoblangan', `<b>${money(s.accrued)}</b>`)}${line("To'langan", money(s.paid))}${line('Qolgan', `<b class="${s.left ? 'st0' : 'st2'}">${money(s.left)}</b>`)}</div>
+    ${!sup && (s.breakdown || []).length ? `<h2>Guruhlar bo‘yicha hisob</h2><div class="wrap"><table><tr><th>Guruh</th><th>Dars soati</th><th>Oydagi darslar</th><th>1 dars narxi</th><th>Kelgan</th><th>Kelmagan</th><th>Hisoblandi</th></tr>${s.breakdown.map((x) => `<tr><td>${esc(x.group)}</td><td class="num">${x.hours} soat</td><td class="num">${x.lessons}</td><td class="num">${money(x.per_lesson)}</td><td class="num">${x.present}</td><td class="num">${x.absent}</td><td class="num"><b>${money(x.earned)}</b></td></tr>`).join('')}</table></div><div class="mu">Hisob: 1 soatlik ulush × dars soati (Math/English 2 soat, Kids 1 soat) ÷ shu oydagi darslar soni = 1 dars narxi. O‘qituvchi faqat kelgan o‘quvchi darsi uchun oladi (faqat yakunlangan davomat hisobga olinadi). Kidsda o‘qituvchi har guruhga 1 soatdan dars beradi — 1 soatlik ulush (75 000), Math/English’da 2 soat — 150 000.</div>` : ''}
     ${form}${ed ? `<form data-f="saladv" data-id="${d.id}" class="row"><label style="flex:1;min-width:200px">Avans / qisman to‘lov (so‘m)<input type="number" name="amount" min="1000" step="1000" required placeholder="Masalan: 500000"></label><button class="btn pri">💵 Avans berish</button></form><div class="mu">Berilgan summa “To‘langan”ga qo‘shiladi, qolgani “Qolgan”ga o‘tadi. Kassaga chiqim bo‘lib yoziladi.</div>` : ''}${(d.payments || []).length ? `<h2>Shu oy to‘lovlari</h2>${d.payments.map((x) => `<div class="row" style="margin:2px 0"><span class="mu">${esc(String(x.date))}</span><b>${money(x.amount)}</b><span class="tag">${esc(x.note || '')}</span></div>`).join('')}` : ''}${s.advance ? `<div class="mu">Hisoblangandan ortiqcha berilgan (avans qoldig‘i): <b>${money(s.advance)}</b></div>` : ''}<h2>Ma'lumotlari</h2><div class="grid" style="grid-template-columns:1fr 1fr">${line('Telefon', esc(d.phone || '—'))}${line('Tuman', esc(d.district || '—'))}</div>
     <h2>Tavsif</h2><div class="card" style="white-space:pre-wrap;margin:0">${d.description ? esc(d.description) : '<span class="mu">Tavsif kiritilmagan</span>'}</div>
     <h2>Guruhlari</h2>${grs || '<p class="mu">Hozircha guruhi yo‘q</p>'}`, true);
@@ -681,6 +718,7 @@ const A = {
   eye(el) { const i = el.parentElement.querySelector('input'); i.type = i.type === 'password' ? 'text' : 'password'; el.textContent = i.type === 'password' ? '👁' : '🙈'; },
   genpw(el) { const f = el.closest('form'), i = f.querySelector('input[name=password]'); i.value = genPw(); i.type = 'text'; const e = f.querySelector('.eye'); if (e) e.textContent = '🙈'; },
   tab: (el, v) => go(v),
+  ui() { S.ui = String((+S.ui % 3) + 1); safe(() => localStorage.setItem('oqm_ui', S.ui)); render(); toast(`Dizayn: ${S.ui}. ${UIN[S.ui - 1]}`); },
   out: async () => { try { if (refresh) await post('/auth/logout/', { refresh }); } catch { /* chiqish baribir bajariladi */ } localLogout(); },
   profile() { S.mo = { t: 'pw' }; S.msg = null; render(); },
   sf(el, v) { S.d.sf = v; S.d.lvf = ''; render(); },
@@ -691,6 +729,8 @@ const A = {
     S.mo = { t: 'grp', g, students: [], all: S.d.dash.groups }; render();
     await run(async () => { await loadGroupModal(); });
   },
+  tsv(el, v) { S.d.tsv = v; render(); },
+  attc: (el, v) => run(async () => { S.d.att.group = v; await loadSheet(); }),
   attg: (el) => run(async () => { S.d.att.group = el.value; if (el.value) await loadSheet(); else S.d.att.sheet = null; }),
   attd: (el) => run(async () => { S.d.att.date = el.value || today(); if (S.d.att.group) await loadSheet(); }),
   mk(el, v) { const [id, p] = v.split(':'); S.d.att.marks[id] = p === '1'; render(); },
@@ -844,7 +884,7 @@ async function saveMarks() {
 /* ---------- formalar (submit) ---------- */
 const num = (v) => (v === '' || v === undefined ? undefined : Number(v));
 const F = {
-  login: async (f) => { try { await login(f); } catch (e) { S.lerr = e.message; S.lu = f.username; render(); } },
+  login: async (f) => { try { await login(f); } catch (e) { S.lerr = /no active account/i.test(e.message) ? "Login yoki parol noto'g'ri" : e.message; S.lu = f.username; render(); } },
   async contact(f, form) {
     const note = (f.note || '').trim();
     if (note.length < 3) return bad('Avval izoh yozing: ota-ona nima sabab aytdi');
@@ -915,7 +955,7 @@ const F = {
     const g = S.d.room.groups.find((x) => x.id == f.group), ids = [...new Set([...g.supports.map((x) => x.id), +f.support])];
     await post(`/groups/${g.id}/supports/`, { supports: ids }); await refreshGroups(); ok(`${g.name}: support biriktirildi`);
   },
-  async genrate(f) { S.set = await patch('/settings/', { default_rate: +f.rate }); await L.sal(); ok(`Umumiy stavka: ${money(+f.rate)}`); },
+  async genrate(f) { S.set = await patch('/settings/', { default_rate: +f.rate }); await L.sal(); ok(`Umumiy ulush: ${money(+f.rate)}`); },
   async salsave(f, form) { const m = S.mo; m.d = await patch(`/salary/${form.dataset.id}/?month=${m.month}`, { value: f.value }); await L.sal(); ok('Saqlandi'); },
   async addroom(f) { await post('/rooms/', { name: f.name.trim() }); await roomList(); S.d.room.panel = ''; ok(`Xona ${f.name.trim()} qo'shildi`); },
   async slotassign(f) {

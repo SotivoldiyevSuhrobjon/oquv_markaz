@@ -16,14 +16,13 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.academics.models import Enrollment, Group, Session, Student
+from apps.academics.schedule import WEEKDAYS
 from apps.accounts.models import Role, User
 from apps.core.exceptions import BusinessError
 from apps.core.models import Setting
 from apps.core.utils import month_of, month_range, today
 
 from .models import CashEntry, Discount, MonthClosing, Payment
-
-WEEKDAYS = {"DCJ": (0, 2, 4), "SPSh": (1, 3, 5)}  # Du-Chor-Ju / Se-Pay-Sha
 
 
 def lessons(days: str, from_date: dt.date, ym: str) -> tuple[int, int]:
@@ -215,24 +214,51 @@ def reopen_month(month: str, user) -> MonthClosing:
 
 
 # ---- Oylik ----
+def teacher_breakdown(teacher: User, month: str) -> list[dict]:
+    """Guruhlar bo'yicha oylik: 1 o'quvchi uchun oylik ulush ÷ shu oydagi darslar soni = 1 dars narxi.
+
+    O'qituvchi faqat kelgan o'quvchining darsi uchun oladi.
+    Stavka (rate) = 1 SOATLIK dars uchun 1 o'quvchining oylik ulushi (standart 75 000).
+    Math/English: 2 soat dars = 2 x 75 000 = 150 000. Kids: o'qituvchi har guruhga 1 soatdan kiradi = 75 000."""
+    s = Setting.get()
+    rate = teacher.rate if teacher.rate is not None else s.default_rate
+    out = []
+    for g in Group.objects.filter(teachers=teacher).select_related("subject"):
+        hours = 1 if g.subject.is_kids else 2  # o'qituvchining shu guruhdagi haftalik dars soati (bir darsda)
+        _, total = lessons(g.days, dt.date(int(month[:4]), int(month[5:7]), 1), month)
+        recs = Session.objects.filter(group=g, date__startswith=month, finalized=True)
+        present = recs.filter(records__present=True).count()
+        absent = recs.filter(records__present=False).count()
+        per = rate * hours / total if total else 0
+        out.append(
+            {
+                "group": g.name,
+                "hours": hours,
+                "lessons": total,
+                "per_lesson": round(per),
+                "present": present,
+                "absent": absent,
+                "earned": round(present * per),
+            }
+        )
+    return out
+
+
 def teacher_student_days(teacher: User, month: str) -> float:
     """Yakunlangan darslardagi kelgan o'quvchilar soni; Kidsda ikki o'qituvchi teng bo'lishadi."""
-    total = 0.0
-    for g in Group.objects.filter(teachers=teacher).prefetch_related("group_teachers"):
-        n = g.group_teachers.count() or 1
-        present = Session.objects.filter(group=g, date__startswith=month, finalized=True, records__present=True).count()
-        total += present / n
-    return total
+    return sum(r["present"] for r in teacher_breakdown(teacher, month))
 
 
 def salary_of(user: User, month: str) -> dict:
     s = Setting.get()
+    breakdown = None
     if user.role == Role.SUPPORT:
         accrued, days, rate = user.monthly_salary, None, None
     else:
-        days = teacher_student_days(user, month)
+        breakdown = teacher_breakdown(user, month)
+        days = sum(r["present"] for r in breakdown)
         rate = user.rate if user.rate is not None else s.default_rate
-        accrued = round(days * rate)
+        accrued = sum(r["earned"] for r in breakdown)
     paid = CashEntry.objects.filter(kind="chiqim", category="oylik", staff=user, month=month).aggregate(t=Sum("amount"))["t"] or 0
     return {
         "staff": user.id,
@@ -240,6 +266,7 @@ def salary_of(user: User, month: str) -> dict:
         "role": user.role,
         "student_days": days,
         "rate": rate,
+        "breakdown": breakdown,
         "accrued": accrued,
         "paid": paid,
         "left": max(0, accrued - paid),

@@ -27,7 +27,7 @@ class User(AbstractUser):
     birth_date = models.DateField(null=True, blank=True)
     category = models.CharField("Yo'nalish (fan slug)", max_length=30, blank=True)
     rate = models.PositiveIntegerField(
-        null=True, blank=True, help_text="Shaxsiy stavka (1 o'quvchi / 1 dars kuni). Bo'sh bo'lsa umumiy stavka."
+        null=True, blank=True, help_text="Shaxsiy ulush: 1 soatlik dars uchun 1 o'quvchi/oyiga. Bo'sh bo'lsa umumiy ulush."
     )
     monthly_salary = models.PositiveIntegerField(default=0, help_text="Support teacher belgilangan oyligi")
     work_from = models.DateField(null=True, blank=True)

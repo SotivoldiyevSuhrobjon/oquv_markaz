@@ -12,6 +12,7 @@ Qoidalar:
 
 from dataclasses import dataclass, field
 
+WEEKDAYS = {"DCJ": (0, 2, 4), "SPSh": (1, 3, 5)}  # Du-Chor-Ju / Se-Pay-Sha
 START_HOURS = [f"{h:02d}:00" for h in range(8, 17)]
 
 

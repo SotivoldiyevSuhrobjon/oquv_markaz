@@ -1,4 +1,4 @@
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
@@ -272,7 +272,11 @@ class SalaryDetailView(APIView):
         from apps.academics.models import Group
         from apps.academics.serializers import GroupSerializer
 
-        groups = Group.objects.filter(Q(teachers=u) | Q(supports=u), is_active=True).distinct()
+        groups = (
+            Group.objects.filter(Q(teachers=u) | Q(supports=u), is_active=True)
+            .distinct()
+            .annotate(student_count=Count("enrollments", filter=Q(enrollments__left_on__isnull=True), distinct=True))
+        )
         return {
             "id": u.id,
             "name": str(u),

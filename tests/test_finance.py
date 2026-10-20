@@ -3,6 +3,7 @@ import datetime as dt
 import pytest
 
 from apps.academics import services as acad
+from apps.academics.models import Group
 from apps.core.exceptions import BusinessError
 from apps.finance import services
 from apps.finance.models import Payment
@@ -77,7 +78,33 @@ def test_salary_from_finalized_attendance(group, enrolled, teacher):
         acad.mark(group, dt.date(2026, 10, day), [{"student": enrolled.id, "present": True}], teacher)
         acad.finalize(group, dt.date(2026, 10, day), teacher)
     row = services.salary_of(teacher, "2026-10")
-    assert row["student_days"] == 2 and row["accrued"] == 2 * 50000
+    assert row["student_days"] == 2 and row["accrued"] == round(2 * 150000 / 13)  # 2 soatlik dars: 2 x 75 000 = 150 000, oktyabrda 13 dars
+
+
+@pytest.mark.django_db
+def test_salary_pays_only_attended_lessons_rest_stays_with_center(group, enrolled, teacher):
+    """1 o'quvchi uchun oyiga 130 000; oktyabrda 13 dars (Du-Chor-Ju) => 1 dars 10 000. Faqat kelgan darslar to'lanadi."""
+    teacher.rate = 65000  # 1 soatlik ulush; Math 2 soat => 130 000
+    teacher.save()
+    for day, present in ((12, True), (14, True), (9, False)):
+        acad.mark(group, dt.date(2026, 10, day), [{"student": enrolled.id, "present": present}], teacher)
+        acad.finalize(group, dt.date(2026, 10, day), teacher)
+    row = services.salary_of(teacher, "2026-10")
+    g = row["breakdown"][0]
+    assert (g["lessons"], g["per_lesson"], g["present"], g["absent"]) == (13, 10000, 2, 1)
+    assert row["accrued"] == 20000
+
+
+@pytest.mark.django_db
+def test_kids_teacher_gets_half_share_for_one_hour(kids, teacher, teacher2, student):
+    """Kids: o'qituvchi 1 soat beradi => 1 soatlik ulush (75 000); ikkinchi o'qituvchi tayinlanmagan bo'lsa ham."""
+    g = Group.objects.create(name="Kids_1", subject=kids, room="102", days="DCJ", start_time=dt.time(8, 0))
+    g.group_teachers.create(teacher=teacher, position=1)
+    acad.enroll(student, g)
+    acad.mark(g, dt.date(2026, 10, 12), [{"student": student.id, "present": True}], teacher)
+    acad.finalize(g, dt.date(2026, 10, 12), teacher)
+    row = services.salary_of(teacher, "2026-10")
+    assert row["breakdown"][0]["per_lesson"] == round(75000 / 13) and row["accrued"] == round(75000 / 13)
 
 
 @pytest.mark.django_db

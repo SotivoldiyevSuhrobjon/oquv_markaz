@@ -6,8 +6,25 @@ os.environ.setdefault("DJANGO_TESTING", "1")
 import pytest  # noqa: E402
 from rest_framework.test import APIClient  # noqa: E402
 
+from apps.academics import services as _acad_services  # noqa: E402
 from apps.academics.models import Group, Student, Subject  # noqa: E402
 from apps.accounts.models import Role, User  # noqa: E402
+
+REAL_ATTENDANCE_OPEN = _acad_services.attendance_open
+
+
+@pytest.fixture
+def real_window(monkeypatch):
+    """Davomat vaqt oynasini haqiqiy ishlatish; hozirgi vaqt: callable(naive_datetime) -> o'rnatadi."""
+    monkeypatch.setattr("apps.academics.services.attendance_open", REAL_ATTENDANCE_OPEN)
+
+    def at(y, m, d, hh, mm=0):
+        from django.utils import timezone
+
+        t = dt.datetime(y, m, d, hh, mm, tzinfo=timezone.get_current_timezone())
+        monkeypatch.setattr("apps.academics.services.now_local", lambda: t)
+
+    return at
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +35,7 @@ def fixed_today(monkeypatch):
     for mod in ("apps.finance.services", "apps.academics.services"):
         monkeypatch.setattr(f"{mod}.today", lambda: d, raising=False)
     monkeypatch.setattr("apps.finance.views.today", lambda: d, raising=False)
+    monkeypatch.setattr("apps.academics.services.attendance_open", lambda *a, **k: True)  # oyna testlari real_window ishlatadi
     return d
 
 
