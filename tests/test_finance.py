@@ -177,3 +177,12 @@ def test_delete_archived_student_and_staff(api, admin, group, enrolled, teacher)
     api.post(f"/api/staff/{teacher.id}/archive/")
     assert api.delete(f"/api/staff/{teacher.id}/").status_code == 204
     assert api.delete(f"/api/staff/{admin.id}/").status_code == 400
+
+
+@pytest.mark.django_db
+def test_salary_left_negative_when_advance_exceeds(group, enrolled, teacher, admin):
+    services.pay_salary(teacher, "2026-10", admin, amount=500000)
+    row = services.salary_of(teacher, "2026-10")
+    assert row["left"] == -500000
+    with pytest.raises(BusinessError):
+        services.pay_salary(teacher, "2026-10", admin)

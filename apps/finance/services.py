@@ -269,7 +269,7 @@ def salary_of(user: User, month: str) -> dict:
         "breakdown": breakdown,
         "accrued": accrued,
         "paid": paid,
-        "left": max(0, accrued - paid),
+        "left": accrued - paid,  # manfiy bo'lsa — avans oylikdan ko'p berilgan
     }
 
 
