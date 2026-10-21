@@ -155,3 +155,25 @@ def test_month_rows_endpoint(enrolled, bugalter, api):
     assert r.status_code == 200
     row = r.data["rows"][0]
     assert row["student"] == enrolled.id and row["due"] == 600000 and row["status"] == "unpaid"
+
+
+@pytest.mark.django_db
+def test_salary_counts_saved_attendance_without_finalize(group, enrolled, teacher):
+    acad.mark(group, dt.date(2026, 10, 12), [{"student": enrolled.id, "present": True}], teacher)
+    row = services.salary_of(teacher, "2026-10")
+    assert row["student_days"] == 1 and row["accrued"] == round(150000 / 13)
+
+
+@pytest.mark.django_db
+def test_delete_archived_student_and_staff(api, admin, group, enrolled, teacher):
+    api = api(admin)
+    assert api.delete(f"/api/students/{enrolled.id}/").status_code == 400  # faol
+    acad.archive_student(enrolled, "left", "test", None)
+    services.add_payment(enrolled, "2026-10", 100000, None)
+    r = api.delete(f"/api/students/{enrolled.id}/")
+    assert r.status_code == 400 and "PAYMENTS:1:100000" in str(r.data)
+    assert api.delete(f"/api/students/{enrolled.id}/?force=1").status_code == 204
+    assert api.delete(f"/api/staff/{teacher.id}/").status_code == 400  # faol
+    api.post(f"/api/staff/{teacher.id}/archive/")
+    assert api.delete(f"/api/staff/{teacher.id}/").status_code == 204
+    assert api.delete(f"/api/staff/{admin.id}/").status_code == 400

@@ -249,7 +249,8 @@ class StudentViewSet(AuditMixin, viewsets.ModelViewSet):
             qs = qs.filter(enrollments__group__in=my_groups(u), enrollments__left_on__isnull=True).distinct()
         p = self.request.query_params
         archived = p.get("archived") == "1"
-        qs = qs.exclude(status="active") if archived else qs.filter(status="active")
+        if self.action != "destroy":  # o'chirishda holat perform_destroy'da tekshiriladi
+            qs = qs.exclude(status="active") if archived else qs.filter(status="active")
         if p.get("group"):
             qs = qs.filter(enrollments__group_id=p["group"], enrollments__left_on__isnull=True)
         if p.get("q"):
@@ -261,9 +262,17 @@ class StudentViewSet(AuditMixin, viewsets.ModelViewSet):
             qs = qs.exclude(id__in=Enrollment.objects.filter(left_on__isnull=True).values("student_id"))
         return qs.distinct()
 
+    @transaction.atomic
     def perform_destroy(self, instance):
-        if instance.payments.exists():
-            raise BusinessError("To'lovlari bor o'quvchini o'chirib bo'lmaydi — arxivga o'tkazing")
+        """Faqat arxivdagi o'quvchi o'chiriladi. To'lovlari bo'lsa — faqat ?force=1 bilan (to'lovlari ham o'chadi)."""
+        if instance.status == Student.Status.ACTIVE:
+            raise BusinessError("Faol o'quvchini o'chirib bo'lmaydi — avval arxivga o'tkazing")
+        pays = instance.payments.all()
+        if pays.exists():
+            if self.request.query_params.get("force") != "1":
+                total = sum(p.amount for p in pays)
+                raise BusinessError(f"PAYMENTS:{pays.count()}:{total}")
+            pays.delete()
         super().perform_destroy(instance)
 
     @action(detail=True, methods=["post"])

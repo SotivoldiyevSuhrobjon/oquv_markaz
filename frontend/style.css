@@ -267,3 +267,27 @@ body.ui3 header:hover .hb #who,body.ui3 header:has(:focus-visible) .hb #who{max-
 .sched .rm{font-weight:700;white-space:nowrap}
 .sched.now{border-left-color:var(--gold);box-shadow:0 0 0 2px color-mix(in srgb,var(--gold) 55%,transparent)}
 @media (max-width:520px){.sched{flex-wrap:wrap}.sched .tm{min-width:0}}
+
+/* Telefonda dizayn modellari: 2 — 3D tugmali ko'k sarlavha, 3 — pastdagi 3D ikonka paneli */
+@media (max-width:760px){
+body.ui2 header{background:radial-gradient(300px 160px at 15% 0,#3a4bd0aa,transparent),linear-gradient(170deg,#0d1240,#1b2670 58%,#2a3aa8);box-shadow:0 10px 24px -12px rgba(8,12,48,.8)}
+body.ui2 header h1{color:#fff}
+body.ui2 .cb{display:block;position:relative;width:26px;height:26px;margin:0 10px 0 4px;transform-style:preserve-3d;transform:rotateX(-18deg) rotateY(30deg);animation:cbspin 16s linear infinite;flex:none}
+body.ui2 .cb i{position:absolute;inset:0;border-radius:6px;background:#fff url(logo-mark.png) center/74% no-repeat;border:1px solid rgba(255,255,255,.7)}
+body.ui2 .cb i:nth-child(1){transform:translateZ(13px)}body.ui2 .cb i:nth-child(2){transform:rotateY(90deg) translateZ(13px)}body.ui2 .cb i:nth-child(3){transform:rotateY(180deg) translateZ(13px)}body.ui2 .cb i:nth-child(4){transform:rotateY(-90deg) translateZ(13px)}body.ui2 .cb i:nth-child(5){transform:rotateX(90deg) translateZ(13px)}body.ui2 .cb i:nth-child(6){transform:rotateX(-90deg) translateZ(13px)}
+body.ui2 header .mk{display:none}
+body.ui2 header nav{gap:8px;padding:4px 2px 10px}
+body.ui2 header .tab{display:inline-flex;align-items:center;gap:6px;flex:none;color:#fff;border-radius:12px;padding:5px 11px;background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.06));border:1px solid rgba(255,255,255,.22);box-shadow:0 4px 0 rgba(5,8,38,.6),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .15s,box-shadow .15s}
+body.ui2 header .tab:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(5,8,38,.6)}
+body.ui2 header .tab.on{background:linear-gradient(180deg,#ffd75e,#f2b81c 60%,#e19a05);color:#1a1d4a;border-color:#ffe48a;box-shadow:0 4px 0 #9a6a05,0 8px 14px -6px rgba(242,184,28,.6),inset 0 1px 0 rgba(255,255,255,.7)}
+body.ui2 .ni{margin:0}
+
+body.ui3 main{padding-bottom:96px}
+body.ui3 header nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;flex-wrap:nowrap;justify-content:flex-start;gap:4px;order:0;flex:none;overflow-x:auto;padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,color-mix(in srgb,var(--card) 90%,transparent),var(--card));backdrop-filter:blur(14px);border-top:1px solid var(--bd);box-shadow:0 -12px 30px -16px rgba(20,26,60,.5);perspective:700px}
+body.ui3 header .tab{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1 0 62px;min-width:62px;padding:2px 4px;border:0;background:transparent;color:var(--tx);font-size:10.5px;white-space:nowrap}
+body.ui3 header .tab.on{background:transparent;color:var(--tx);font-weight:700}
+body.ui3 .ni{display:grid;place-items:center;width:38px;height:38px;margin:0;border-radius:13px;font-size:20px;background:linear-gradient(145deg,#fff,#dfe7ff);box-shadow:4px 5px 0 color-mix(in srgb,var(--ac) 38%,transparent),0 8px 12px -6px rgba(20,26,60,.5),inset 0 1px 0 #fff;transform:rotateX(14deg) rotateY(-14deg);transition:transform .2s}
+body.ui3 header .tab:active .ni{transform:translateY(3px)}
+body.ui3 header .tab.on .ni{background:linear-gradient(145deg,#ffe48a,#f2b81c);box-shadow:4px 5px 0 #b98206,0 8px 14px -5px rgba(242,184,28,.7),inset 0 1px 0 #fff8d6;transform:rotateX(0) rotateY(0) translateY(-3px)}
+body.ui3 .nl{opacity:1}
+}

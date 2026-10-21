@@ -226,7 +226,7 @@ def teacher_breakdown(teacher: User, month: str) -> list[dict]:
     for g in Group.objects.filter(teachers=teacher).select_related("subject"):
         hours = 1 if g.subject.is_kids else 2  # o'qituvchining shu guruhdagi haftalik dars soati (bir darsda)
         _, total = lessons(g.days, dt.date(int(month[:4]), int(month[5:7]), 1), month)
-        recs = Session.objects.filter(group=g, date__startswith=month, finalized=True)
+        recs = Session.objects.filter(group=g, date__startswith=month)  # davomat saqlanishi bilan darrov hisoblanadi
         present = recs.filter(records__present=True).count()
         absent = recs.filter(records__present=False).count()
         per = rate * hours / total if total else 0
@@ -245,7 +245,7 @@ def teacher_breakdown(teacher: User, month: str) -> list[dict]:
 
 
 def teacher_student_days(teacher: User, month: str) -> float:
-    """Yakunlangan darslardagi kelgan o'quvchilar soni; Kidsda ikki o'qituvchi teng bo'lishadi."""
+    """Saqlangan davomatdagi kelgan o'quvchilar soni; Kidsda ikki o'qituvchi teng bo'lishadi."""
     return sum(r["present"] for r in teacher_breakdown(teacher, month))
 
 

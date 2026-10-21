@@ -82,7 +82,7 @@ class StaffViewSet(viewsets.ModelViewSet):
     serializer_class = StaffSerializer
     permission_classes = [SectionPermission]
     section = "stf"
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         qs = User.objects.all()
@@ -91,7 +91,7 @@ class StaffViewSet(viewsets.ModelViewSet):
         p = self.request.query_params
         if p.get("role"):
             qs = qs.filter(role=p["role"])
-        if p.get("archived") != "1":
+        if p.get("archived") != "1" and self.action not in ("destroy", "restore"):
             qs = qs.filter(archived_at__isnull=True)
         return qs
 
@@ -117,6 +117,19 @@ class StaffViewSet(viewsets.ModelViewSet):
         u.save()
         audit.log(request, "staff.archive", u.username)
         return Response({"ok": True})
+
+    def destroy(self, request, *args, **kwargs):
+        """Arxivdagi xodimni butunlay o'chirish (faqat admin). Kassa yozuvlari qoladi, xodim nomi bo'shaydi."""
+        u = self.get_object()
+        if request.user.role != Role.ADMIN:
+            raise BusinessError("Faqat admin o'chira oladi")
+        if u.pk == request.user.pk or u.role == Role.ADMIN:
+            raise BusinessError("Bu akkauntni o'chirib bo'lmaydi")
+        if u.archived_at is None and u.is_active:
+            raise BusinessError("Faol xodimni o'chirib bo'lmaydi — avval arxivlang")
+        audit.log(request, "staff.delete", u.username, u.role)
+        u.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
     def restore(self, request, pk=None):
